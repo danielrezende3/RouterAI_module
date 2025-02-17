@@ -41,7 +41,7 @@ Permite enviar um texto para diferentes LLMs com fallback automático.
 
 ```json
 {
-  "text": "bom dia"
+  "input": "bom dia"
 }
 ```
 
@@ -74,7 +74,7 @@ Permite definir qual tipo de fallback, sendo eles:
 
 ```json
 {
-  "text": "bom dia",
+  "input": "bom dia",
   "type-rollback": "cost" | "latency" | "availability" | "quality"
 }
 ```
@@ -98,7 +98,7 @@ Atenção ao detalhe em que é possível escolher o fallback ou o seu tipo, **NU
 
 ```json
 {
-  "text": "bom dia",
+  "input": "bom dia",
   "fallback": ["chatgpt", "deepseek"]
 }
 ```
@@ -120,7 +120,7 @@ Permite enviar texto junto com arquivos (PDF ou imagem) para processamento.
 
 ```json
 {
-  "text": "Analise esta imagem para mim e gere uma imagem resultante",
+  "input": "Analise esta imagem para mim e gere uma imagem resultante",
   "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"]
 }
 ```
@@ -143,7 +143,7 @@ Permite selecionar as LLMs por fallback ao processar texto + arquivos.
 
 ```json
 {
-  "text": "Desenhe uma maça caindo do céu",
+  "input": "Desenhe uma maça caindo do céu",
   "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"],
   "fallback": ["chatgpt", "deepseek"]
 }
@@ -167,7 +167,7 @@ Além de enviar o arquivo, permite selecionar as LLM's por tipo de fallback. Ate
 
 ```json
 {
-  "text": "Desenhe uma maça caindo do céu",
+  "input": "Desenhe uma maça caindo do céu",
   "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"],
   "type-rollback": "cost" | "latency" | "availability" | "quality"
 }
