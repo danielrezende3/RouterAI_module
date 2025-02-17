@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "smartroute"
+version = "0.1.0"
+description = "This is a RouterAI module, which integrates multiple AI APIs and routes requests to provide users with the best service for their need"
+authors = ["Daniel Rezende <danielrezende2@academico.ufs.br>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = {extras = ["standard"], version = "^0.115.8"}
+langchain = "^0.3.18"
+sqlalchemy = "^2.0.38"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+ruff = "^0.9.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
