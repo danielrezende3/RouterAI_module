@@ -2,9 +2,10 @@ import logging
 
 from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
-from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
+import asyncio
+from smartroute.utils import start_chat_model
 
 
 class Settings(BaseSettings):
@@ -37,6 +38,10 @@ available_models_dict = {
     },
 }
 
+available_models = [
+    start_chat_model(model_info[1]) for model_info in available_models_dict.items()
+]
+
 
 class InferenceRequest(BaseModel):
     text: str
@@ -52,31 +57,12 @@ async def get_welcome_message():
 
 @app.post("/v1/invoke")
 async def invoke_ai_response(inference_request: InferenceRequest):
-    fallback = (
-        inference_request.fallback
-        if inference_request.fallback
-        else [model[1] for model in available_models_dict.items()]
-    )
-    if fallback:
+    if inference_request.fallback:
         try:
-            models = [available_models_dict[model] for model in fallback]
-        except KeyError as e:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=f"Model {e} is not available.",
-            )
-    else:
-        models = [model[1] for model in available_models_dict.items()]
-
-    text = inference_request.text
-    for model_info in models:
-        try:
-            model = init_chat_model(
-                model_info["name"],
-                model_provider=model_info["provider"],
-                api_key=model_info["api_key"],
-                timeout=5,
-            )
+            models = [
+                start_chat_model(available_models_dict[model])
+                for model in inference_request.fallback
+            ]
         except ValueError as e:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -87,17 +73,21 @@ async def invoke_ai_response(inference_request: InferenceRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content=f"Could not import model: {e}",
             )
-        try:
-            # Initialize the model
+    else:
+        models = available_models
 
+    text = inference_request.text
+    for model in models:
+        try:
             # Invoke the model
-            result = await model.ainvoke(text)
-            logging.info(
-                f"Model '{model_info['name']}' from provider '{model_info['provider']}' succeeded."
-            )
-            return {"output": result.content, "model_used": model_info["name"]}
-        except Exception as e:  # Replace with actual exception
-            logging.error(f"Model '{model_info['name']}' failed with error: {e}")
+            result = await asyncio.wait_for(model.ainvoke(text), timeout=5.0)
+            if hasattr(model, "model"):
+                model_name = model.model.split("/")[1]
+            elif hasattr(model, "model_name"):
+                model_name = model.model_name
+            return {"output": result.content, "model_used": model_name}
+        except asyncio.TimeoutError:
+            logging.error(f"Model {model} timed out.")
             continue  # Try the next model
 
     return JSONResponse(
