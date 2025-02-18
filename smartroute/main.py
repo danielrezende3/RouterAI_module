@@ -4,8 +4,8 @@ from smartroute.routers import invoke
 from smartroute.settings import Settings
 
 settings = Settings()  # type: ignore
-app = FastAPI()
 
+app = FastAPI()
 app.include_router(invoke.router)
 
 

@@ -1,4 +1,17 @@
 from pydantic_settings import BaseSettings
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logging.getLogger("openai").setLevel(logging.ERROR)
+logging.getLogger("httpcore").setLevel(logging.ERROR)
+logging.getLogger("uvicorn").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.ERROR)
+logging.getLogger("anthropic").setLevel(logging.ERROR)
+logging.getLogger("grpc").setLevel(logging.ERROR)
 
 
 class Settings(BaseSettings):
