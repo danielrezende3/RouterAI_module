@@ -4,7 +4,7 @@ This project contains its to create RouterAI module, which integrates multiple A
 
 ## overview
 
-Este projeto visa criar um módulo API capaz de direcionar dinamicamente as requisições para diferentes provedores de inteligência artificial – especificamente, [Chatgpt](https://chatgpt.com/), [Gemini](https://gemini.google.com/?hl=pt-BR), [Claude](https://claude.ai/)  [Deepseek](https://www.deepseek.com/), [mistral](https://x.ai/) e [grok](https://x.ai/)– com base em critérios de fallback, sendo eles custo, latência, disponibilidade e qualidade da resposta. A ideia central é garantir disponibilidade e tolerância a falhas, permitindo que o sistema se adapte a diferentes cenários de carga e variações na performance dos provedores.
+Este projeto visa criar um módulo API capaz de direcionar dinamicamente as requisições para diferentes provedores de inteligência artificial – especificamente, [Chatgpt](https://chatgpt.com/), [Gemini](https://gemini.google.com/?hl=pt-BR), [Claude](https://claude.ai/) – com base em critérios de fallback, sendo eles custo, latência e qualidade da resposta. A ideia central é garantir disponibilidade e tolerância a falhas, permitindo que o sistema se adapte a _diferentes cenários de carga (how?)_ e variações na performance dos provedores.
 
 O módulo proporciona uma solução robusta, simples e de fácil manutenção. A arquitetura proposta tem como foco oferecer um sistema de roteamento inteligente que beneficie tanto outros times de engenharia quanto sistemas internos, otimizando o uso dos recursos e melhorando a experiência dos usuários finais.
 
@@ -15,14 +15,12 @@ Este documento destina-se a oferecer uma visão clara do problema, das soluçõe
 ### Custo
 
 - Monitorar o valor gasto por requisição ou por período, considerando o modelo de cobrança de cada provedor.
-- Registrar e comparar o custo das chamadas API realizadas para cada provedor, possibilitando a criação de métricas de custo médio e total.
+- Permitir utilização de diferentes modelos como nvidia/prompt-task-and-complexity-classifier para classificação de respostas de acordo com o custo.
 
 ### Disponibilidade
 
-- Implementar mecanismos de fallback, retry e circuit breaker para lidar com indisponibilidade temporária de provedores.
-  - Fallback: Ir para outro provedor se o primeiro falhar
-  - Retry: Tentar de novo o mesmo provedor se algo falhar.
-  - Circuit Breaker: Um "disjuntor" que desliga as tentativas quando algo falha muitas vezes seguidas, evitando piorar a situação.
+- Implementar mecanismo de fallback para lidar com indisponibilidade temporária de provedores.
+- Permitir que o usuário escolha tiers de modelo, como fast, mid, reasoning e latency, para escolher o modelo mais adequado para a situação.
 - Realizar testes de stress e de falhas simuladas para validar a resiliência do sistema.
 - Monitorar a taxa de erros e quedas, definindo métricas que permitam identificar rapidamente falhas críticas e disparar alertas.
 
@@ -33,11 +31,11 @@ Este documento destina-se a oferecer uma visão clara do problema, das soluçõe
 
 ## Milestones
 
-### Versão 1
+### Feature/simple-fallback ✅
 
 Permite enviar um texto para diferentes LLMs com fallback automático.
 
-**POST /generate-response**
+POST /v1/invoke
 
 ```json
 {
@@ -62,20 +60,15 @@ Saída, (todos os fallbacks falharam)
 }
 ```
 
-### Versão 2
+### Feature/nvidia-fallback ✅
 
-Permite definir qual tipo de fallback, sendo eles:
+Permite enviar um texto para nvidia classifier e enviar pro tier necessário.
 
-1. Custo
-2. Disponibilidade, checar o status.site-do-llm.com
-3. Qualidade da resposta
-
-**POST /generate-response**
+POST /v1/invoke
 
 ```json
 {
-  "input": "bom dia",
-  "type-rollback": "cost" | "latency" | "availability" | "quality"
+  "input": "bom dia"
 }
 ```
 
@@ -84,22 +77,58 @@ Saída, caminho feliz
 ```json
 {
   "output": "bom dia Daniel",
-  "model-used": "grok"
+  "model-used": "gemini"
 }
 ```
 
-### Versão 3
+### Feature/tier-model ✅
+
+Permite definir qual tipo de fallback, sendo eles:
+
+1. Modelos rápidos e pequenos (fast)
+1. Modelos medianos (mid)
+1. Qualidade da resposta (reasoning)
+1. Latência (latency)
+
+POST /v1/invoke
+
+```json
+{
+  "input": "bom dia",
+  "tier-model": "fast" | "mid" | "reasoning" | "latency"
+}
+```
+
+Saída, caminho feliz
+
+```json
+{
+  "output": "bom dia Daniel",
+  "model-used": "gemini"
+}
+```
+
+### Feature/fallback-ordening ✅
 
 Permite definir a ordem de fallback das LLMs.
 
 Atenção ao detalhe em que é possível escolher o fallback ou o seu tipo, **NUNCA** os dois
 
-**POST /generate-response**
+POST /v1/invoke
 
 ```json
 {
   "input": "bom dia",
   "fallback": ["chatgpt", "deepseek"]
+}
+```
+
+ou POST /v1/invoke
+
+```json
+{
+  "input": "bom dia",
+  "tier-model": "fast" | "mid" | "reasoning" | "latency"
 }
 ```
 
@@ -112,11 +141,11 @@ Saida, caminho feliz
 }
 ```
 
-### Versão 4
+### Feature/send-image?
 
 Permite enviar texto junto com arquivos (PDF ou imagem) para processamento.
 
-**POST /generate-content** (validar se é realmente um arquivo pdf ou imagem.)
+POST /v1/invoke-image? (validar se é realmente um arquivo pdf ou imagem.)
 
 ```json
 {
@@ -135,11 +164,11 @@ Saida, caminho feliz
 }
 ```
 
-### Versão 5
+### Feature/send-image-fallback
 
 Permite selecionar as LLMs por fallback ao processar texto + arquivos.
 
-**POST /generate-content**
+POST /v1/invoke-image?
 
 ```json
 {
@@ -159,17 +188,17 @@ Saída, caminho feliz
 }
 ```
 
-### Versão 6
+### Feature/send-image-fallback-type
 
 Além de enviar o arquivo, permite selecionar as LLM's por tipo de fallback. Atenção que ao usar `type-rollback`, não será possível usar `fallback`
 
-**POST /generate-content**
+POST /v1/invoke-image?
 
 ```json
 {
   "input": "Desenhe uma maça caindo do céu",
   "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"],
-  "type-rollback": "cost" | "latency" | "availability" | "quality"
+  "tier-model": "fast" | "mid" | "reasoning" | "latency"
 }
 ```
 
@@ -183,13 +212,19 @@ Saída, caminho feliz
 }
 ```
 
-### Versão xx - usuário autenticado
+### Feature/nvidia-cpu-gpu
 
-- Tokens?
-- usuário e senha?
+Make sure the API selects between gpu and cpu depending on the machine.
 
-### Versão xx - Monitoramento
+### Feature/nvidia-async
 
-- logger?
-- excel?
-- planilha interativa (powerbi)?
+Make sure the API handle async `classifier.py` requests.
+
+### Feature/RAG-simple
+
+Send the documents, then the question and get the answer.
+local storage, session or cookie, don't know which one is better.
+
+### Feature/monitoring-db
+
+Create a database to store the monitoring data.
