@@ -10,7 +10,9 @@ from smartroute.models_config import (
     FAST_MODELS,
     MID_MODELS,
     REASONING_MODELS,
+    ModelDict,
     get_chat_instances,
+    get_effective_timeout,
     start_chat_model,
 )
 from smartroute.schemas import InferencePublic, InferenceRequest
@@ -20,9 +22,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/invoke", tags=["invoke"])
 
 TIER_MODEL_MAPPING = {
-    "fast": (FAST_MODELS, 60),
-    "mid": (MID_MODELS, 60),
-    "reasoning": (REASONING_MODELS, 600),
+    "fast": FAST_MODELS,
+    "mid": MID_MODELS,
+    "reasoning": REASONING_MODELS,
 }
 
 
@@ -85,11 +87,24 @@ async def get_models(
 def initialize_fallback_models(
     fallback_model_keys: list[str],
 ) -> tuple[list[BaseChatModel], float]:
+    """
+    Initializes fallback models based on provided model keys.
+
+    Each model key is used to start a chat model instance. The effective timeout is
+    determined from the timeout values in the respective model configurations.
+
+    :param fallback_model_keys: A list of model keys for fallback.
+    :return: A tuple of the list of model instances and the effective timeout.
+    :raises HTTPException: If initialization of any model fails.
+    """
     models = []
+    timeouts = []
     for key in fallback_model_keys:
         try:
-            model = start_chat_model(ALL_MODELS[key])
+            model_config = ALL_MODELS[key]
+            model = start_chat_model(model_config)
             models.append(model)
+            timeouts.append(model_config["timeout"])
             logger.debug("Successfully started fallback model: %s", key)
         except (ValueError, ImportError, KeyError) as e:
             logger.error("Error initializing fallback model '%s': %s", key, e)
@@ -97,31 +112,34 @@ def initialize_fallback_models(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Error initializing model '{key}': {e}",
             )
-    # TODO: Dynamically determine the timeout based on the slowest model if needed.
-    return models, 600.0
+    effective_timeout = max(timeouts) if timeouts else 600.0
+    return models, effective_timeout
 
 
 def initialize_tier_models(tier: str) -> tuple[list[BaseChatModel], float]:
     """
-    Initializes fallback models based on provided model keys.
+    Initializes models based on the specified tier.
 
-    Each model key is used to start a chat model instance. If any model fails to initialize,
-    an HTTP exception is raised.
+    Retrieves the model configuration for the given tier, computes the effective timeout,
+    and returns the chat instances along with the computed timeout.
 
-    :param fallback_model_keys: A list of model keys for fallback.
-    :return: A tuple of the list of model instances and a fixed timeout of 600 seconds.
-    :raises HTTPException: If initialization of any model fails.
+    :param tier: The tier name ('fast', 'mid', or 'reasoning').
+    :return: A tuple of the list of model instances and the effective timeout in seconds.
+    :raises HTTPException: If an invalid tier is provided.
     """
-    config = TIER_MODEL_MAPPING.get(tier)
-    if not config:
+    model_configs = TIER_MODEL_MAPPING.get(tier)
+    if not model_configs:
         logger.error("Invalid tier model provided: %s", tier)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid tier model. Choose between 'fast', 'mid', or 'reasoning'.",
         )
-    models, timeout = get_chat_instances(config[0]), config[1]
+    models = get_chat_instances(model_configs)
+    timeout = get_effective_timeout(model_configs)
     logger.debug(
-        "Initialized tier models for '%s' with timeout %s seconds", tier, timeout
+        "Initialized tier models for '%s' with effective timeout %s seconds",
+        tier,
+        timeout,
     )
     return models, timeout
 
