@@ -23,49 +23,54 @@ settings = Settings()  # type: ignore
 
 
 FAST_MODELS = {
-    "gpt-4o-mini": {
-        "name": "gpt-4o-mini",
+    "chatgpt-fast": {
+        "name": "chatgpt-4o-mini",
         "provider": "openai",
         "api_key": settings.openai_api_key,
     },
-    "gemini-2.0-flash-lite-preview-02-05": {
-        "name": "gemini-2.0-flash-lite-preview-02-05",
+    "gemini-fast": {
+        "name": "gemini-2.0-flash-lite",
         "provider": "google_genai",
         "api_key": settings.gemini_api_key,
     },
-    "claude-3-5-haiku-latest": {
-        "name": "claude-3-5-haiku-latest",
+    "claude-fast": {
+        "name": "claude-3-5-haiku-20241022",
         "provider": "anthropic",
         "api_key": settings.anthropic_api_key,
     },
 }
 
 MID_MODELS = {
-    "gpt-4o": {
-        "name": "gpt-4o",
+    "chatgpt-mid": {
+        "name": "chatgpt-4o",
         "provider": "openai",
         "api_key": settings.openai_api_key,
     },
-    "claude-3-5-sonnet-latest": {
+    "claude-mid": {
         "name": "claude-3-5-sonnet-latest",
         "provider": "anthropic",
         "api_key": settings.anthropic_api_key,
     },
-}
-
-REASONING_MODELS = {
-    "gpt-o3-mini": {
-        "name": "o1-mini-2024-09-12",
-        "provider": "openai",
-        "api_key": settings.openai_api_key,
-    },
-    "gemini-1.5-pro": {
-        "name": "gemini-1.5-pro",
+    "gemini-mid": {
+        "name": "gemini-2.0-flash",
         "provider": "google_genai",
         "api_key": settings.gemini_api_key,
     },
-    "claude-3-opus-latest": {
-        "name": "claude-3-opus-latest",
+}
+
+REASONING_MODELS = {
+    "chatgpt-reasoning": {
+        "name": "o3-mini-2025-01-31",
+        "provider": "openai",
+        "api_key": settings.openai_api_key,
+    },
+    "gemini-reasoning": {
+        "name": "gemini-2.0-pro-exp-02-05",
+        "provider": "google_genai",
+        "api_key": settings.gemini_api_key,
+    },
+    "claude-reasoning": {
+        "name": "claude-3-7-sonnet-20250219",
         "provider": "anthropic",
         "api_key": settings.anthropic_api_key,
     },
