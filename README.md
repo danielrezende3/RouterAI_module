@@ -1,230 +1,49 @@
 # SmartRoute - RouterAI_module
 
-This project contains its to create RouterAI module, which integrates multiple AI APIs and routes requests to provide users with the best service for their needs.
+Este projeto visa criar o módulo RouterAI, que integra múltiplas APIs de IA e roteia requisições para oferecer o melhor serviço aos usuários.
 
-## overview
+## Instalar e rodar o projeto
 
-Este projeto visa criar um módulo API capaz de direcionar dinamicamente as requisições para diferentes provedores de inteligência artificial – especificamente, [Chatgpt](https://chatgpt.com/), [Gemini](https://gemini.google.com/?hl=pt-BR), [Claude](https://claude.ai/) – com base em critérios de fallback, sendo eles custo, latência e qualidade da resposta. A ideia central é garantir disponibilidade e tolerância a falhas, permitindo que o sistema se adapte a _diferentes cenários de carga (how?)_ e variações na performance dos provedores.
+Para rodar o projeto, é preciso ter o poetry instaldo, Se você não tem, instale seguindo as instruções da [documentação](https://python-poetry.org/docs/).
 
-O módulo proporciona uma solução robusta, simples e de fácil manutenção. A arquitetura proposta tem como foco oferecer um sistema de roteamento inteligente que beneficie tanto outros times de engenharia quanto sistemas internos, otimizando o uso dos recursos e melhorando a experiência dos usuários finais.
+### Dependências locais
 
-Este documento destina-se a oferecer uma visão clara do problema, das soluções consideradas e do plano de execução, para que todos possam entender e, se necessário, contribuir com feedback ou implementação.
+Utilize o Poetry para gerenciar as dependências do projeto:
 
-## Como medir custo, latência, disponibilidade e qualidade da resposta?
+Gere o arquivo `poetry.lock`:
 
-### Custo
-
-- Monitorar o valor gasto por requisição ou por período, considerando o modelo de cobrança de cada provedor.
-- Permitir utilização de diferentes modelos como nvidia/prompt-task-and-complexity-classifier para classificação de respostas de acordo com o custo.
-
-### Disponibilidade
-
-- Implementar mecanismo de fallback para lidar com indisponibilidade temporária de provedores.
-- Permitir que o usuário escolha tiers de modelo, como fast, mid, reasoning e latency, para escolher o modelo mais adequado para a situação.
-- Realizar testes de stress e de falhas simuladas para validar a resiliência do sistema.
-- Monitorar a taxa de erros e quedas, definindo métricas que permitam identificar rapidamente falhas críticas e disparar alertas.
-
-### Qualidade da resposta
-
-- Utilização de sites como [Artificial Analysis](https://artificialanalysis.ai/) para medir a qualidade, preço e velocidade
-- Utilização de modelos como [nvidia/prompt-task-and-complexity-classifier](https://huggingface.co/nvidia/prompt-task-and-complexity-classifier) para classificação de respostas para modelos adequados
-
-## Milestones
-
-### Feature/simple-fallback ✅
-
-Permite enviar um texto para diferentes LLMs com fallback automático.
-
-POST /v1/invoke
-
-```json
-{
-  "input": "bom dia"
-}
+```bash
+poetry lock
 ```
 
-Saída, caminho feliz
+Instale as dependências:
 
-```json
-{
-  "output": "bom dia Daniel",
-  "model-used": "gemini"
-}
+```bash
+poetry install
 ```
 
-Saída, (todos os fallbacks falharam)
+### Iniciar o Ambiente Virtual com Poetry
 
-```json
-{
-  "error": "Não foi possível concluir a chamada",
-}
+Entre no ambiente virtual do Poetry:
+
+```bash
+poetry shell
 ```
 
-### Feature/nvidia-fallback ✅
+### Configurar o Arquivo .env
 
-Permite enviar um texto para nvidia classifier e enviar pro tier necessário.
+Configure o arquivo `.env` com as variáveis de ambiente necessárias. Envie as chaves apropriadas conforme orientações do time.
 
-POST /v1/invoke
-
-```json
-{
-  "input": "bom dia"
-}
+```dotenv
+OPENAI_API_KEY=ADD_KEY_HERE
+ANTHROPIC_API_KEY=ADD_KEY_HERE
+GEMINI_API_KEY=ADD_KEY_HERE
 ```
 
-Saída, caminho feliz
+### Rodar o projeto
 
-```json
-{
-  "output": "bom dia Daniel",
-  "model-used": "gemini"
-}
+```bash
+fastapi dev smartroute/main.py
 ```
 
-### Feature/tier-model ✅
-
-Permite definir qual tipo de fallback, sendo eles:
-
-1. Modelos rápidos e pequenos (fast)
-1. Modelos medianos (mid)
-1. Qualidade da resposta (reasoning)
-1. Latência (latency)
-
-POST /v1/invoke
-
-```json
-{
-  "input": "bom dia",
-  "tier-model": "fast" | "mid" | "reasoning" | "latency"
-}
-```
-
-Saída, caminho feliz
-
-```json
-{
-  "output": "bom dia Daniel",
-  "model-used": "gemini"
-}
-```
-
-### Feature/fallback-ordening ✅
-
-Permite definir a ordem de fallback das LLMs.
-
-Atenção ao detalhe em que é possível escolher o fallback ou o seu tipo, **NUNCA** os dois
-
-POST /v1/invoke
-
-```json
-{
-  "input": "bom dia",
-  "fallback": ["chatgpt", "deepseek"]
-}
-```
-
-ou POST /v1/invoke
-
-```json
-{
-  "input": "bom dia",
-  "tier-model": "fast" | "mid" | "reasoning" | "latency"
-}
-```
-
-Saida, caminho feliz
-
-```json
-{
-  "output": "bom dia Daniel",
-  "model-used": "deepseek"
-}
-```
-
-### Feature/send-image?
-
-Permite enviar texto junto com arquivos (PDF ou imagem) para processamento.
-
-POST /v1/invoke-image? (validar se é realmente um arquivo pdf ou imagem.)
-
-```json
-{
-  "input": "Analise esta imagem para mim e gere uma imagem resultante",
-  "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"]
-}
-```
-
-Saida, caminho feliz
-
-```json
-{
-  "output": "bom dia Daniel",
-  "output-image": "image_path",
-  "model-used": "mistral"
-}
-```
-
-### Feature/send-image-fallback
-
-Permite selecionar as LLMs por fallback ao processar texto + arquivos.
-
-POST /v1/invoke-image?
-
-```json
-{
-  "input": "Desenhe uma maça caindo do céu",
-  "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"],
-  "fallback": ["chatgpt", "deepseek"]
-}
-```
-
-Saída, caminho feliz
-
-```json
-{
-  "output": "",
-  "output-image": "file=@caminho/do/arquivo.png",
-  "model-used": "mistral"
-}
-```
-
-### Feature/send-image-fallback-type
-
-Além de enviar o arquivo, permite selecionar as LLM's por tipo de fallback. Atenção que ao usar `type-rollback`, não será possível usar `fallback`
-
-POST /v1/invoke-image?
-
-```json
-{
-  "input": "Desenhe uma maça caindo do céu",
-  "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"],
-  "tier-model": "fast" | "mid" | "reasoning" | "latency"
-}
-```
-
-Saída, caminho feliz
-
-```json
-{
-  "output": "",
-  "output-image": "file=@caminho/do/arquivo.png",
-  "model-used": "mistral"
-}
-```
-
-### Feature/nvidia-cpu-gpu
-
-Make sure the API selects between gpu and cpu depending on the machine.
-
-### Feature/nvidia-async
-
-Make sure the API handle async `classifier.py` requests.
-
-### Feature/RAG-simple
-
-Send the documents, then the question and get the answer.
-local storage, session or cookie, don't know which one is better.
-
-### Feature/monitoring-db
-
-Create a database to store the monitoring data.
+Isto irá iniciar o servidor FastAPI na porta 8000. Acesse `http://localhost:8000/docs` para visualizar a documentação da API.
