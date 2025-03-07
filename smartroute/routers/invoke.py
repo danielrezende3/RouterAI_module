@@ -10,7 +10,6 @@ from smartroute.models_config import (
     FAST_MODELS,
     MID_MODELS,
     REASONING_MODELS,
-    ModelDict,
     get_chat_instances,
     get_effective_timeout,
     start_chat_model,
@@ -18,14 +17,13 @@ from smartroute.models_config import (
 from smartroute.schemas import InferencePublic, InferenceRequest
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/v1/invoke", tags=["invoke"])
-
 TIER_MODEL_MAPPING = {
     "fast": FAST_MODELS,
     "mid": MID_MODELS,
     "reasoning": REASONING_MODELS,
 }
+ALL_MODELS_FAILED_REQUEST = "All models failed to process the request."
 
 
 @router.post("/", response_model=InferencePublic)
@@ -43,12 +41,20 @@ async def invoke_ai_response(inference_request: InferenceRequest) -> InferencePu
     :raises HTTPException: For invalid request combinations or if all models fail.
     """
     logger.info(
-        "Received invocation request with tier: %s and fallback: %s",
-        inference_request.tier_model,
+        "Received invocation request with tier: %s, fallback: %s, and latency mode: %s",
+        inference_request.tier,
         inference_request.fallback,
+        inference_request.latency_mode,
     )
     models, timeout = await get_models(inference_request)
-    response = await get_model_response(models, inference_request.text, timeout)
+    if inference_request.latency_mode:
+        response = await get_model_response_concurrent(
+            models, inference_request.text, timeout
+        )
+    else:
+        response = await get_model_response_sequential(
+            models, inference_request.text, timeout
+        )
     return response
 
 
@@ -66,17 +72,17 @@ async def get_models(
     :return: A tuple of the list of model instances and the timeout in seconds.
     :raises HTTPException: If both fallback and tier are provided.
     """
-    if inference_request.fallback and inference_request.tier_model:
-        logger.error("Both fallback and tier_model were provided in the request.")
+    if inference_request.fallback and inference_request.tier:
+        logger.error("Both fallback and tier were provided in the request.")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Please choose either fallback or tier_model, not both.",
+            detail="Please choose either fallback or tier, not both.",
         )
     if inference_request.fallback:
         logger.debug("Initializing fallback models: %s", inference_request.fallback)
         return initialize_fallback_models(inference_request.fallback)
 
-    tier = inference_request.tier_model
+    tier = inference_request.tier
     if not tier:
         classification_result = await async_classify_prompt(inference_request.text)
         tier = decide_tier(classification_result)
@@ -144,7 +150,67 @@ def initialize_tier_models(tier: str) -> tuple[list[BaseChatModel], float]:
     return models, timeout
 
 
-async def get_model_response(
+async def invoke_model(
+    model: BaseChatModel, text: str, timeout: float
+) -> tuple[str, str]:
+    """
+    Invoke the specified chat model asynchronously with the given text.
+
+    This function extracts the model name from the provided chat model instance and invokes
+    its asynchronous method to process the input text. The operation is subject to a timeout, and
+    the resulting output is converted to a string if necessary before being returned.
+
+    :param model: An instance of a chat model implementing the asynchronous 'ainvoke' method.
+    :type model: BaseChatModel
+    :param text: The input text prompt to be processed by the model.
+    :type text: str
+    :param timeout: The maximum time in seconds to wait for the model's response.
+    :type timeout: float
+    :return: A tuple where the first element is the model's name and the second element is the output as a string.
+    :rtype: tuple[str, str]
+
+    :raises asyncio.TimeoutError: If the model invocation exceeds the specified timeout.
+    """
+    model_name = extract_model_name(model)
+    logger.debug("Invoking model: %s", model_name)
+    result = await asyncio.wait_for(model.ainvoke(text), timeout=timeout)
+    output = result.content if isinstance(result.content, str) else str(result.content)
+    return model_name, output
+
+
+async def get_model_response_concurrent(
+    models: list[BaseChatModel], text: str, timeout: float
+) -> InferencePublic:
+    """
+    Invokes all models concurrently and returns the first valid response.
+    Pending tasks are cancelled once a valid response is received.
+    """
+    tasks = [
+        asyncio.create_task(invoke_model(model, text, timeout)) for model in models
+    ]
+    try:
+        for completed_task in asyncio.as_completed(tasks, timeout=timeout):
+            try:
+                model_name, output = await completed_task
+                # Cancel any remaining tasks
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                return InferencePublic(output=output, model_used=model_name)
+            except Exception as e:
+                logger.error("A model invocation failed: %s", e)
+                continue
+    except asyncio.TimeoutError:
+        logger.error("No model responded within the timeout period.")
+
+    logger.error(ALL_MODELS_FAILED_REQUEST)
+    raise HTTPException(
+        status_code=status.HTTP_408_REQUEST_TIMEOUT,
+        detail=ALL_MODELS_FAILED_REQUEST,
+    )
+
+
+async def get_model_response_sequential(
     models: list[BaseChatModel], text: str, timeout: float
 ) -> InferencePublic:
     """
@@ -175,10 +241,10 @@ async def get_model_response(
             logger.error("Model %s timed out after %s seconds.", model_name, timeout)
         except Exception as e:
             logger.error("Model %s encountered an error: %s", model_name, e)
-    logger.error("All models failed to process the request.")
+    logger.error(ALL_MODELS_FAILED_REQUEST)
     raise HTTPException(
         status_code=status.HTTP_408_REQUEST_TIMEOUT,
-        detail="All models failed to process the request.",
+        detail=ALL_MODELS_FAILED_REQUEST,
     )
 
 
@@ -200,7 +266,4 @@ def extract_model_name(model) -> str:
     else:
         text = "unknown_model"
 
-    if text.find("/") != -1:
-        return text.split("/")[-1]
-    else:
-        return text
+    return text.split("/")[-1] if "/" in text else text

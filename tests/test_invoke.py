@@ -5,7 +5,7 @@ from fastapi import HTTPException
 import pytest
 
 from smartroute.classifier import async_classify_prompt
-from smartroute.routers.invoke import extract_model_name, get_model_response
+from smartroute.routers.invoke import extract_model_name, get_model_response_sequential
 from smartroute.schemas import InferencePublic
 
 
@@ -54,7 +54,7 @@ def patch_dependencies(monkeypatch):
     # Patch get_chat_instances to return a list containing one DummyModel.
     monkeypatch.setattr(
         "smartroute.routers.invoke.get_chat_instances",
-        lambda models: [DummyModel("tier_model")],
+        lambda models: [DummyModel("tier")],
     )
 
     # Patch classifier functions.
@@ -106,15 +106,15 @@ async def test_semaphore_limit(monkeypatch):
 
 def test_conflicting_request(client):
     """
-    When both fallback and tier_model are provided,
+    When both fallback and tier are provided,
     the request should be rejected with HTTP 422.
     """
-    request_data = {"text": "Test input", "fallback": ["dummy"], "tier_model": "fast"}
+    request_data = {"text": "Test input", "fallback": ["dummy"], "tier": "fast"}
     response = client.post("/v1/invoke", json=request_data)
     assert response.status_code == 422
     assert (
         response.json()["detail"]
-        == "Please choose either fallback or tier_model, not both."
+        == "Please choose either fallback or tier, not both."
     )
 
 
@@ -143,29 +143,29 @@ def test_fallback_request_success(monkeypatch, client):
 
 def test_tier_request_success(monkeypatch, client):
     """
-    When tier_model is provided (and no fallback),
+    When tier is provided (and no fallback),
     the initialize_tier_models function is used.
     """
 
     def dummy_initialize_tier_models(tier):
-        models = [DummyModel("tier_model_test")]
+        models = [DummyModel("tier_test")]
         return models, 60.0
 
     monkeypatch.setattr(
         "smartroute.routers.invoke.initialize_tier_models", dummy_initialize_tier_models
     )
 
-    request_data = {"text": "Test tier", "tier_model": "fast"}
+    request_data = {"text": "Test tier", "tier": "fast"}
     response = client.post("/v1/invoke/", json=request_data)
     assert response.status_code == 200
     json_resp = response.json()
     assert "Processed: Test tier" in json_resp["output"]
-    assert json_resp["model_used"] == "tier_model_test"
+    assert json_resp["model_used"] == "tier_test"
 
 
 def test_classification_request(monkeypatch, client):
     """
-    When neither fallback nor tier_model is provided,
+    When neither fallback nor tier is provided,
     the classifier is used to decide which tier to use.
     """
 
@@ -193,7 +193,7 @@ async def test_get_model_response_success():
     when at least one model processes the text successfully.
     """
     models = [DummyModel("test_model")]
-    result: InferencePublic = await get_model_response(models, "Hello", 60.0)  # type: ignore
+    result: InferencePublic = await get_model_response_sequential(models, "Hello", 60.0)  # type: ignore
     assert result.output == "Processed: Hello"
     assert result.model_used == "test_model"
 
@@ -206,7 +206,7 @@ async def test_get_model_response_timeout():
     """
     models = [TimeoutDummyModel("timeout_model")]
     with pytest.raises(HTTPException) as excinfo:
-        await get_model_response(models, "Hello", 0.01)  # type: ignore
+        await get_model_response_sequential(models, "Hello", 0.01)  # type: ignore
     assert excinfo.value.status_code == 408
 
 
@@ -217,7 +217,7 @@ async def test_get_model_response_error_then_success():
     returns a valid response, the valid response is used.
     """
     models = [ErrorDummyModel("error_model"), DummyModel("success_model")]
-    result: InferencePublic = await get_model_response(models, "Hello", 60.0)
+    result: InferencePublic = await get_model_response_sequential(models, "Hello", 60.0)
     assert result.output == "Processed: Hello"
     assert result.model_used == "success_model"
 
