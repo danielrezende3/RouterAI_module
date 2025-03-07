@@ -28,18 +28,6 @@ ALL_MODELS_FAILED_REQUEST = "All models failed to process the request."
 
 @router.post("/", response_model=InferencePublic)
 async def invoke_ai_response(inference_request: InferenceRequest) -> InferencePublic:
-    """
-    Endpoint to process the inference request and return an AI model response.
-
-    Depending on the provided tier or fallback configuration, the function
-    selects and invokes the appropriate AI model. If no tier is provided, the
-    request is classified to determine the best tier.
-
-    :param inference_request: The inference request containing the text, tier,
-                              and optional fallback configuration.
-    :return: An InferencePublic object with the output and the model used.
-    :raises HTTPException: For invalid request combinations or if all models fail.
-    """
     logger.info(
         "Received invocation request with tier: %s, fallback: %s, and latency mode: %s",
         inference_request.tier,
