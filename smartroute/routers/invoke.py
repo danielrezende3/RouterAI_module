@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 from langchain_core.language_models import BaseChatModel
 
-from smartroute import classifier
+from smartroute.classifier import async_classify_prompt, decide_tier
 from smartroute.schemas import InferencePublic, InferenceRequest
 from smartroute.models_config import (
     ALL_MODELS,
@@ -33,14 +33,14 @@ async def invoke_ai_response(inference_request: InferenceRequest):
         inference_request.tier_model,
         inference_request.fallback,
     )
-    models, timeout = get_models(inference_request)
+    models, timeout = await get_models(inference_request)
     text = inference_request.text
     logger.debug("Text to process: %s", text)
     response = await get_model_response(models, text, timeout)
     return response
 
 
-def get_models(
+async def get_models(
     inference_request: InferenceRequest,
 ) -> tuple[list[BaseChatModel], float]:
     if inference_request.fallback and inference_request.tier_model:
@@ -55,9 +55,9 @@ def get_models(
     else:
         tier = inference_request.tier_model
         if not tier:
-            classification_result = classifier.classify_prompt(inference_request.text)
+            classification_result = await async_classify_prompt(inference_request.text)
             score = classification_result.get("prompt_complexity_score", [0])[0]
-            tier = classifier.decide_tier(classification_result)
+            tier = decide_tier(classification_result)
             logger.debug("Classification result: %s", score)
         return initialize_tier_models(tier)
 

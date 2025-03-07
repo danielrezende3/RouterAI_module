@@ -1,4 +1,6 @@
 # TODO: Make it cpu or gpu agnostic
+import asyncio
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -163,7 +165,9 @@ def classify_prompt(prompt: str) -> dict:
 
 
 def decide_tier(
-    classification_result: dict, threshold_fast: float = 0.3, threshold_mid: float = 0.6
+    classification_result: dict,
+    threshold_fast: float = 0.3,
+    threshold_mid: float = 0.42,
 ) -> str:
     """
     Uses the classifier's `prompt_complexity_score` to decide on a tier model.
@@ -184,3 +188,13 @@ def decide_tier(
         return "mid"
     else:
         return "reasoning"
+
+
+semaphore = asyncio.Semaphore(3)
+
+
+async def async_classify_prompt(prompt: str) -> dict:
+    # Acquire the semaphore before proceeding.
+    async with semaphore:
+        # Offload the blocking classifier call to a thread.
+        return await asyncio.to_thread(classify_prompt, prompt)

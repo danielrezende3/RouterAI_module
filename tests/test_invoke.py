@@ -1,8 +1,10 @@
 import asyncio
+import time
 
 from fastapi import HTTPException
 import pytest
 
+from smartroute.classifier import async_classify_prompt
 from smartroute.routers.invoke import extract_model_name, get_model_response
 from smartroute.schemas import InferencePublic
 
@@ -57,12 +59,10 @@ def patch_dependencies(monkeypatch):
 
     # Patch classifier functions.
     monkeypatch.setattr(
-        "smartroute.routers.invoke.classifier.classify_prompt",
+        "smartroute.classifier.classify_prompt",
         lambda text: {"prompt_complexity_score": [0]},
     )
-    monkeypatch.setattr(
-        "smartroute.routers.invoke.classifier.decide_tier", lambda result: "fast"
-    )
+    monkeypatch.setattr("smartroute.classifier.decide_tier", lambda result: "fast")
 
     # Ensure tier mappings exist (even if empty)
     monkeypatch.setattr("smartroute.routers.invoke.FAST_MODELS", {})
@@ -71,6 +71,37 @@ def patch_dependencies(monkeypatch):
 
 
 # ----- ENDPOINT TESTS
+
+
+@pytest.mark.asyncio
+async def test_semaphore_limit(monkeypatch):
+    # Use a mutable state dict to track current and maximum concurrent calls.
+    state = {"current": 0, "max": 0}
+
+    # This dummy synchronous function simulates a blocking operation.
+    def dummy_classify(prompt: str) -> dict:
+        # Increment the current concurrency counter.
+        state["current"] += 1
+        # Update max if needed.
+        if state["current"] > state["max"]:
+            state["max"] = state["current"]
+        # Simulate a blocking delay (e.g., model inference)
+        time.sleep(0.2)
+        # Decrement the counter after work is done.
+        state["current"] -= 1
+        return {"prompt_complexity_score": [0]}
+
+    # Monkey-patch the original synchronous classify_prompt with our dummy.
+    monkeypatch.setattr("smartroute.classifier.classify_prompt", dummy_classify)
+
+    # Spawn several concurrent async calls.
+    tasks = [async_classify_prompt(f"Test {i}") for i in range(10)]
+    await asyncio.gather(*tasks)
+
+    # Assert that the maximum concurrent calls never exceeded 3.
+    assert state["max"] <= 3, (
+        f"Semaphore limit exceeded: max concurrent was {state['max']}"
+    )
 
 
 def test_conflicting_request(client):
