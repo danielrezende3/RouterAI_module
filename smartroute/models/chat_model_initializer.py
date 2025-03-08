@@ -2,6 +2,7 @@ from smartroute.schemas import ModelDict
 from smartroute.settings import Settings
 from langchain_core.language_models import BaseChatModel
 from langchain.chat_models import init_chat_model
+import random
 
 settings = Settings()  # type: ignore
 FAST_TIMEOUT = 60  # 1 minute
@@ -28,7 +29,7 @@ FAST_MODELS: dict[str, ModelDict] = {
 }
 MID_MODELS: dict[str, ModelDict] = {
     "chatgpt-mid": {
-        "name": "chatgpt-4o",
+        "name": "gpt-4o-2024-11-20",
         "provider": "openai",
         "api_key": settings.openai_api_key,
         "timeout": FAST_TIMEOUT,
@@ -67,6 +68,11 @@ REASONING_MODELS: dict[str, ModelDict] = {
     },
 }
 ALL_MODELS = {**FAST_MODELS, **MID_MODELS, **REASONING_MODELS}
+TIER_MODEL_MAPPING = {
+    "fast": FAST_MODELS,
+    "mid": MID_MODELS,
+    "reasoning": REASONING_MODELS,
+}
 
 
 def start_chat_model(
@@ -85,9 +91,6 @@ def get_effective_timeout(model_configs: dict[str, ModelDict]) -> float:
 
     The effective timeout is determined by taking the maximum timeout
     from all models in the configuration.
-
-    :param model_configs: A dictionary of model configurations (ModelDict).
-    :return: The effective timeout in seconds.
     """
     return max(model_info["timeout"] for model_info in model_configs.values())
 
@@ -95,4 +98,20 @@ def get_effective_timeout(model_configs: dict[str, ModelDict]) -> float:
 def get_chat_instances(
     models: dict[str, ModelDict],
 ) -> list[BaseChatModel]:
+    # * Is this necessary?
+    items = list(models.items())
+    random.shuffle(items)
     return [start_chat_model(model_info[1]) for model_info in models.items()]
+
+
+def get_model_name(model) -> str:
+    """
+    Extracts a user-friendly name from the model instance.
+
+    The function checks for common attributes that indicate the model's name.
+    If the name contains a forward slash, only the part after the last slash is returned.
+    """
+    name = getattr(model, "model", None) or getattr(
+        model, "model_name", "unknown_model"
+    )
+    return name.split("/")[-1] if "/" in name else name

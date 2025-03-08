@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from smartroute.models_config import FAST_MODELS, MID_MODELS, REASONING_MODELS
-from smartroute.routers import invoke
+from smartroute.models.chat_model_initializer import FAST_MODELS, MID_MODELS, REASONING_MODELS
+from smartroute.routers import invoke_endpoint
 from smartroute.settings import Settings
 
 settings = Settings()  # type: ignore
@@ -56,7 +56,7 @@ It is choosen using `model-type` style, for example:
 ```
 
 ## Response Strategy Configuration:  
-The API offers two distinct inference strategies, controlled by a dedicated boolean flag (`latency`):
+The API offers two distinct inference strategies, controlled by a dedicated boolean flag (`latency_mode`):
 
 - **Concurrent (Latency Mode)**: When `latency_mode` is set to `True`, all selected models are invoked concurrently. The API returns the first valid response and cancels any pending tasks—minimizing overall latency.
 - **Sequential Processing**: If `latency_mode` is `False`, models are invoked one after another. The API attempts each model sequentially until one produces a valid response.
@@ -66,7 +66,7 @@ Note: By default the strategy choosen is sequential.
 
 
 app = FastAPI(title="SmartRoute API", version="0.1.0", description=description)
-app.include_router(invoke.router)
+app.include_router(invoke_endpoint.router)
 
 
 @app.get("/")
