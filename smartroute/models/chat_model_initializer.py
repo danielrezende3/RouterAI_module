@@ -2,6 +2,7 @@ from smartroute.schemas import ModelDict
 from smartroute.settings import Settings
 from langchain_core.language_models import BaseChatModel
 from langchain.chat_models import init_chat_model
+import random
 
 settings = Settings()  # type: ignore
 FAST_TIMEOUT = 60  # 1 minute
@@ -97,6 +98,9 @@ def get_effective_timeout(model_configs: dict[str, ModelDict]) -> float:
 def get_chat_instances(
     models: dict[str, ModelDict],
 ) -> list[BaseChatModel]:
+    # * Is this necessary?
+    items = list(models.items())
+    random.shuffle(items)
     return [start_chat_model(model_info[1]) for model_info in models.items()]
 
 

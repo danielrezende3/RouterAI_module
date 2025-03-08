@@ -6,12 +6,14 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[logging.StreamHandler()],
 )
-logging.getLogger("openai").setLevel(logging.ERROR)
-logging.getLogger("httpcore").setLevel(logging.ERROR)
-logging.getLogger("uvicorn").setLevel(logging.ERROR)
-logging.getLogger("httpx").setLevel(logging.ERROR)
-logging.getLogger("anthropic").setLevel(logging.ERROR)
-logging.getLogger("grpc").setLevel(logging.ERROR)
+logging.getLogger("openai").setLevel(logging.CRITICAL)
+logging.getLogger("httpcore").setLevel(logging.CRITICAL)
+logging.getLogger("uvicorn").setLevel(logging.CRITICAL)
+logging.getLogger("httpx").setLevel(logging.CRITICAL)
+logging.getLogger("anthropic").setLevel(logging.CRITICAL)
+logging.getLogger("grpc").setLevel(logging.CRITICAL)
+logging.getLogger("urllib3").setLevel(logging.CRITICAL)
+logging.getLogger("watchfiles").setLevel(logging.CRITICAL)
 
 
 class Settings(BaseSettings):

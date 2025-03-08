@@ -60,7 +60,12 @@ async def invoke_ai_response_with_history(
         context_token,
         session=session,
     )
-
+    await add_chat_history(
+        text=inference_request.text,
+        response=response,
+        context_token=context_token,
+        session=session,
+    )
     return InvokeResponse(
         output=str(response.content), model_used=model_used, context_token=context_token
     )
@@ -74,7 +79,6 @@ async def add_chat_history(
         "chat_history", context_token, async_connection=session
     )
     messages = [
-        SystemMessage(content="You're a helpful AI assistant!"),
         HumanMessage(content=text),
         AIMessage(content=str(response.content)),
     ]
@@ -179,7 +183,7 @@ def initialize_fallback_models(
             logger.error("Error initializing fallback model '%s': %s", key, e)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error initializing model '{key}': {e}",
+                detail=f"Error initializing model '{key}': Try using the model-type style.",
             )
     effective_timeout = max(timeouts) if timeouts else 600.0
     return models, effective_timeout

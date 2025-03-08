@@ -56,7 +56,7 @@ It is choosen using `model-type` style, for example:
 ```
 
 ## Response Strategy Configuration:  
-The API offers two distinct inference strategies, controlled by a dedicated boolean flag (`latency`):
+The API offers two distinct inference strategies, controlled by a dedicated boolean flag (`latency_mode`):
 
 - **Concurrent (Latency Mode)**: When `latency_mode` is set to `True`, all selected models are invoked concurrently. The API returns the first valid response and cancels any pending tasks—minimizing overall latency.
 - **Sequential Processing**: If `latency_mode` is `False`, models are invoked one after another. The API attempts each model sequentially until one produces a valid response.
