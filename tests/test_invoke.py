@@ -5,8 +5,8 @@ from fastapi import HTTPException
 import pytest
 
 from smartroute.classifier import async_classify_prompt
-from smartroute.routers.invoke import extract_model_name, get_model_response_sequential
-from smartroute.schemas import InferencePublic
+from smartroute.routers.invoke import get_model_name, get_model_response_sequential
+from smartroute.schemas import InvokeResponse
 
 
 class DummyResponse:
@@ -193,7 +193,7 @@ async def test_get_model_response_success():
     when at least one model processes the text successfully.
     """
     models = [DummyModel("test_model")]
-    result: InferencePublic = await get_model_response_sequential(models, "Hello", 60.0)  # type: ignore
+    result: InvokeResponse = await get_model_response_sequential(models, "Hello", 60.0)  # type: ignore
     assert result.output == "Processed: Hello"
     assert result.model_used == "test_model"
 
@@ -217,7 +217,7 @@ async def test_get_model_response_error_then_success():
     returns a valid response, the valid response is used.
     """
     models = [ErrorDummyModel("error_model"), DummyModel("success_model")]
-    result: InferencePublic = await get_model_response_sequential(models, "Hello", 60.0)
+    result: InvokeResponse = await get_model_response_sequential(models, "Hello", 60.0)
     assert result.output == "Processed: Hello"
     assert result.model_used == "success_model"
 
@@ -232,26 +232,26 @@ def test_extract_model_name():
     class ObjA:
         model = "abc/def"
 
-    name = extract_model_name(ObjA())
+    name = get_model_name(ObjA())
     assert name == "def"
 
     # Case: model_name attribute exists.
     class ObjB:
         model_name = "xyz"
 
-    name = extract_model_name(ObjB())
+    name = get_model_name(ObjB())
     assert name == "xyz"
 
     # Case: neither attribute exists.
     class ObjC:
         pass
 
-    name = extract_model_name(ObjC())
+    name = get_model_name(ObjC())
     assert name == "unknown_model"
 
     # Case: model attribute exists without a slash.
     class ObjD:
         model = "simplemodel"
 
-    name = extract_model_name(ObjD())
+    name = get_model_name(ObjD())
     assert name == "simplemodel"

@@ -1,10 +1,14 @@
 import asyncio
 import logging
+import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_postgres import PostgresChatMessageHistory
 
 from smartroute.classifier import async_classify_prompt, decide_tier
+from smartroute.database import get_session
 from smartroute.models_config import (
     ALL_MODELS,
     FAST_MODELS,
@@ -14,7 +18,7 @@ from smartroute.models_config import (
     get_effective_timeout,
     start_chat_model,
 )
-from smartroute.schemas import InferencePublic, InferenceRequest
+from smartroute.schemas import InvokeResponse, InvokeRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/invoke", tags=["invoke"])
@@ -26,28 +30,97 @@ TIER_MODEL_MAPPING = {
 ALL_MODELS_FAILED_REQUEST = "All models failed to process the request."
 
 
-@router.post("/", response_model=InferencePublic)
-async def invoke_ai_response(inference_request: InferenceRequest) -> InferencePublic:
+@router.post("/", response_model=InvokeResponse)
+async def invoke_ai_response(
+    inference_request: InvokeRequest, session=Depends(get_session)
+) -> InvokeResponse:
+    response, model_used = await process_inference_request(
+        inference_request.text,
+        inference_request.fallback,
+        inference_request.tier,
+        inference_request.latency_mode,
+        session=session,
+    )
+    context_token = str(uuid.uuid4())
+    # Save the inference request and response to the database
+    # save_inference_request(inference_request, response, context_token)
+    chat_history = PostgresChatMessageHistory(
+        "chat_history", context_token, async_connection=session
+    )
+    msgs = [
+        SystemMessage(content="You're a helpful AI assistant!"),
+        HumanMessage(content=inference_request.text),
+        AIMessage(content=str(response.content)),
+    ]
+    await chat_history.aadd_messages(msgs)
+    logger.info(await chat_history.aget_messages())
+    return InvokeResponse(
+        output=str(response.content), model_used=model_used, context_token=context_token
+    )
+
+
+@router.post("/{context_token}", response_model=InvokeResponse)
+async def invoke_ai_response_with_history(
+    context_token: str, inference_request: InvokeRequest, session=Depends(get_session)
+) -> InvokeResponse:
+    response, model_used = await process_inference_request(
+        inference_request.text,
+        inference_request.fallback,
+        inference_request.tier,
+        inference_request.latency_mode,
+        context_token,
+        session=session,
+    )
+
+    return InvokeResponse(
+        output=str(response.content), model_used=model_used, context_token=context_token
+    )
+
+
+async def process_inference_request(
+    text: str,
+    fallback: list[str] | None = None,
+    tier: str | None = None,
+    latency_mode: bool = False,
+    context_token: str = "",
+    session=None,
+) -> tuple[BaseMessage, str]:
     logger.info(
         "Received invocation request with tier: %s, fallback: %s, and latency mode: %s",
-        inference_request.tier,
-        inference_request.fallback,
-        inference_request.latency_mode,
+        tier,
+        fallback,
+        latency_mode,
     )
-    models, timeout = await get_models(inference_request)
-    if inference_request.latency_mode:
-        response = await get_model_response_concurrent(
-            models, inference_request.text, timeout
+    models, timeout = await get_models(text, fallback, tier)
+    base_messages = await prepare_text(text, context_token, session=session)
+    if latency_mode:
+        response, model_used = await get_model_response_concurrent(
+            models, base_messages, timeout
         )
     else:
-        response = await get_model_response_sequential(
-            models, inference_request.text, timeout
+        response, model_used = await get_model_response_sequential(
+            models, base_messages, timeout
         )
-    return response
+
+    return response, model_used
+
+
+async def prepare_text(
+    text: str, context_token: str = "", session=Depends(get_session)
+) -> list[BaseMessage]:
+    if not context_token:
+        return [HumanMessage(content=text)]
+    chat_history = PostgresChatMessageHistory(
+        "chat_history", context_token, async_connection=session
+    )
+    history = await chat_history.aget_messages()
+    return history + [HumanMessage(content=text)]
 
 
 async def get_models(
-    inference_request: InferenceRequest,
+    text: str,
+    fallback: list[str] | None = None,
+    tier: str | None = None,
 ) -> tuple[list[BaseChatModel], float]:
     """
     Determines which models to initialize based on the request.
@@ -55,27 +128,20 @@ async def get_models(
     If both fallback and tier are provided, raises an error. If fallback is provided,
     initializes fallback models; otherwise, if the tier is missing, classifies the request
     to decide the tier before initializing the tier models.
-
-    :param inference_request: The inference request.
-    :return: A tuple of the list of model instances and the timeout in seconds.
-    :raises HTTPException: If both fallback and tier are provided.
     """
-    if inference_request.fallback and inference_request.tier:
+    if fallback and tier:
         logger.error("Both fallback and tier were provided in the request.")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Please choose either fallback or tier, not both.",
         )
-    if inference_request.fallback:
-        logger.debug("Initializing fallback models: %s", inference_request.fallback)
-        return initialize_fallback_models(inference_request.fallback)
+    if fallback:
+        return initialize_fallback_models(fallback)
 
-    tier = inference_request.tier
     if not tier:
-        classification_result = await async_classify_prompt(inference_request.text)
+        classification_result = await async_classify_prompt(text)
         tier = decide_tier(classification_result)
-        logger.debug("Determined tier '%s' from classification result", tier)
-    return initialize_tier_models(tier)
+    return initialize_models_by_tier(tier)
 
 
 def initialize_fallback_models(
@@ -86,10 +152,6 @@ def initialize_fallback_models(
 
     Each model key is used to start a chat model instance. The effective timeout is
     determined from the timeout values in the respective model configurations.
-
-    :param fallback_model_keys: A list of model keys for fallback.
-    :return: A tuple of the list of model instances and the effective timeout.
-    :raises HTTPException: If initialization of any model fails.
     """
     models = []
     timeouts = []
@@ -99,7 +161,6 @@ def initialize_fallback_models(
             model = start_chat_model(model_config)
             models.append(model)
             timeouts.append(model_config["timeout"])
-            logger.debug("Successfully started fallback model: %s", key)
         except (ValueError, ImportError, KeyError) as e:
             logger.error("Error initializing fallback model '%s': %s", key, e)
             raise HTTPException(
@@ -110,16 +171,12 @@ def initialize_fallback_models(
     return models, effective_timeout
 
 
-def initialize_tier_models(tier: str) -> tuple[list[BaseChatModel], float]:
+def initialize_models_by_tier(tier: str) -> tuple[list[BaseChatModel], float]:
     """
     Initializes models based on the specified tier.
 
     Retrieves the model configuration for the given tier, computes the effective timeout,
     and returns the chat instances along with the computed timeout.
-
-    :param tier: The tier name ('fast', 'mid', or 'reasoning').
-    :return: A tuple of the list of model instances and the effective timeout in seconds.
-    :raises HTTPException: If an invalid tier is provided.
     """
     model_configs = TIER_MODEL_MAPPING.get(tier)
     if not model_configs:
@@ -138,53 +195,41 @@ def initialize_tier_models(tier: str) -> tuple[list[BaseChatModel], float]:
     return models, timeout
 
 
-async def invoke_model(
-    model: BaseChatModel, text: str, timeout: float
-) -> tuple[str, str]:
+async def ainvoke_model(
+    model: BaseChatModel, text: list[BaseMessage], timeout: float
+) -> tuple[BaseMessage, str]:
     """
     Invoke the specified chat model asynchronously with the given text.
 
     This function extracts the model name from the provided chat model instance and invokes
     its asynchronous method to process the input text. The operation is subject to a timeout, and
     the resulting output is converted to a string if necessary before being returned.
-
-    :param model: An instance of a chat model implementing the asynchronous 'ainvoke' method.
-    :type model: BaseChatModel
-    :param text: The input text prompt to be processed by the model.
-    :type text: str
-    :param timeout: The maximum time in seconds to wait for the model's response.
-    :type timeout: float
-    :return: A tuple where the first element is the model's name and the second element is the output as a string.
-    :rtype: tuple[str, str]
-
-    :raises asyncio.TimeoutError: If the model invocation exceeds the specified timeout.
     """
-    model_name = extract_model_name(model)
+    model_name = get_model_name(model)
     logger.debug("Invoking model: %s", model_name)
     result = await asyncio.wait_for(model.ainvoke(text), timeout=timeout)
-    output = result.content if isinstance(result.content, str) else str(result.content)
-    return model_name, output
+    return result, model_name
 
 
 async def get_model_response_concurrent(
-    models: list[BaseChatModel], text: str, timeout: float
-) -> InferencePublic:
+    models: list[BaseChatModel], text: list[BaseMessage], timeout: float
+) -> tuple[BaseMessage, str]:
     """
     Invokes all models concurrently and returns the first valid response.
     Pending tasks are cancelled once a valid response is received.
     """
     tasks = [
-        asyncio.create_task(invoke_model(model, text, timeout)) for model in models
+        asyncio.create_task(ainvoke_model(model, text, timeout)) for model in models
     ]
     try:
         for completed_task in asyncio.as_completed(tasks, timeout=timeout):
             try:
-                model_name, output = await completed_task
+                result, model_name = await completed_task
                 # Cancel any remaining tasks
                 for t in tasks:
                     if not t.done():
                         t.cancel()
-                return InferencePublic(output=output, model_used=model_name)
+                return (result, model_name)
             except Exception as e:
                 logger.error("A model invocation failed: %s", e)
                 continue
@@ -199,8 +244,8 @@ async def get_model_response_concurrent(
 
 
 async def get_model_response_sequential(
-    models: list[BaseChatModel], text: str, timeout: float
-) -> InferencePublic:
+    models: list[BaseChatModel], text: list[BaseMessage], timeout: float
+) -> tuple[BaseMessage, str]:
     """
     Attempts to generate a response from the provided models.
 
@@ -215,20 +260,15 @@ async def get_model_response_sequential(
     :raises HTTPException: If all models fail to produce a valid response.
     """
     for model in models:
-        model_name = extract_model_name(model)
-        logger.debug("Invoking model: %s", model_name)
         try:
-            result = await asyncio.wait_for(model.ainvoke(text), timeout=timeout)
-            output = (
-                result.content
-                if isinstance(result.content, str)
-                else str(result.content)
-            )
-            return InferencePublic(output=output, model_used=model_name)
+            result, model_name = await ainvoke_model(model, text, timeout)
+            return result, model_name
         except asyncio.TimeoutError:
-            logger.error("Model %s timed out after %s seconds.", model_name, timeout)
+            logger.error(
+                f"Model {get_model_name(model)} timed out after {timeout} seconds."
+            )
         except Exception as e:
-            logger.error("Model %s encountered an error: %s", model_name, e)
+            logger.error(f"Model {get_model_name(model)} encountered an error: {e}")
     logger.error(ALL_MODELS_FAILED_REQUEST)
     raise HTTPException(
         status_code=status.HTTP_408_REQUEST_TIMEOUT,
@@ -236,7 +276,7 @@ async def get_model_response_sequential(
     )
 
 
-def extract_model_name(model) -> str:
+def get_model_name(model) -> str:
     """
     Extracts a user-friendly name from the model instance.
 

@@ -28,7 +28,7 @@ FAST_MODELS: dict[str, ModelDict] = {
 }
 MID_MODELS: dict[str, ModelDict] = {
     "chatgpt-mid": {
-        "name": "chatgpt-4o",
+        "name": "gpt-4o-2024-11-20",
         "provider": "openai",
         "api_key": settings.openai_api_key,
         "timeout": FAST_TIMEOUT,
