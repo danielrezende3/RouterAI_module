@@ -1,195 +1,49 @@
 # SmartRoute - RouterAI_module
 
-This project contains its to create RouterAI module, which integrates multiple AI APIs and routes requests to provide users with the best service for their needs.
+Este projeto visa criar o módulo RouterAI, que integra múltiplas APIs de IA e roteia requisições para oferecer o melhor serviço aos usuários.
 
-## overview
+## Instalar e rodar o projeto
 
-Este projeto visa criar um módulo API capaz de direcionar dinamicamente as requisições para diferentes provedores de inteligência artificial – especificamente, [Chatgpt](https://chatgpt.com/), [Gemini](https://gemini.google.com/?hl=pt-BR), [Claude](https://claude.ai/)  [Deepseek](https://www.deepseek.com/), [mistral](https://x.ai/) e [grok](https://x.ai/)– com base em critérios de fallback, sendo eles custo, latência, disponibilidade e qualidade da resposta. A ideia central é garantir disponibilidade e tolerância a falhas, permitindo que o sistema se adapte a diferentes cenários de carga e variações na performance dos provedores.
+Para rodar o projeto, é preciso ter o poetry instaldo, Se você não tem, instale seguindo as instruções da [documentação](https://python-poetry.org/docs/).
 
-O módulo proporciona uma solução robusta, simples e de fácil manutenção. A arquitetura proposta tem como foco oferecer um sistema de roteamento inteligente que beneficie tanto outros times de engenharia quanto sistemas internos, otimizando o uso dos recursos e melhorando a experiência dos usuários finais.
+### Dependências locais
 
-Este documento destina-se a oferecer uma visão clara do problema, das soluções consideradas e do plano de execução, para que todos possam entender e, se necessário, contribuir com feedback ou implementação.
+Utilize o Poetry para gerenciar as dependências do projeto:
 
-## Como medir custo, latência, disponibilidade e qualidade da resposta?
+Gere o arquivo `poetry.lock`:
 
-### Custo
-
-- Monitorar o valor gasto por requisição ou por período, considerando o modelo de cobrança de cada provedor.
-- Registrar e comparar o custo das chamadas API realizadas para cada provedor, possibilitando a criação de métricas de custo médio e total.
-
-### Disponibilidade
-
-- Implementar mecanismos de fallback, retry e circuit breaker para lidar com indisponibilidade temporária de provedores.
-  - Fallback: Ir para outro provedor se o primeiro falhar
-  - Retry: Tentar de novo o mesmo provedor se algo falhar.
-  - Circuit Breaker: Um "disjuntor" que desliga as tentativas quando algo falha muitas vezes seguidas, evitando piorar a situação.
-- Realizar testes de stress e de falhas simuladas para validar a resiliência do sistema.
-- Monitorar a taxa de erros e quedas, definindo métricas que permitam identificar rapidamente falhas críticas e disparar alertas.
-
-### Qualidade da resposta
-
-- Utilização de sites como [Artificial Analysis](https://artificialanalysis.ai/) para medir a qualidade, preço e velocidade
-- Utilização de modelos como [nvidia/prompt-task-and-complexity-classifier](https://huggingface.co/nvidia/prompt-task-and-complexity-classifier) para classificação de respostas para modelos adequados
-
-## Milestones
-
-### Versão 1
-
-Permite enviar um texto para diferentes LLMs com fallback automático.
-
-**POST /generate-response**
-
-```json
-{
-  "text": "bom dia"
-}
+```bash
+poetry lock
 ```
 
-Saída, caminho feliz
+Instale as dependências:
 
-```json
-{
-  "output": "bom dia Daniel",
-  "model-used": "gemini"
-}
+```bash
+poetry install
 ```
 
-Saída, (todos os fallbacks falharam)
+### Iniciar o Ambiente Virtual com Poetry
 
-```json
-{
-  "error": "Não foi possível concluir a chamada",
-}
+Entre no ambiente virtual do Poetry:
+
+```bash
+poetry shell
 ```
 
-### Versão 2
+### Configurar o Arquivo .env
 
-Permite definir qual tipo de fallback, sendo eles:
+Configure o arquivo `.env` com as variáveis de ambiente necessárias. Envie as chaves apropriadas conforme orientações do time.
 
-1. Custo
-2. Disponibilidade, checar o status.site-do-llm.com
-3. Qualidade da resposta
-
-**POST /generate-response**
-
-```json
-{
-  "text": "bom dia",
-  "type-rollback": "cost" | "latency" | "availability" | "quality"
-}
+```dotenv
+OPENAI_API_KEY=ADD_KEY_HERE
+ANTHROPIC_API_KEY=ADD_KEY_HERE
+GEMINI_API_KEY=ADD_KEY_HERE
 ```
 
-Saída, caminho feliz
+### Rodar o projeto
 
-```json
-{
-  "output": "bom dia Daniel",
-  "model-used": "grok"
-}
+```bash
+fastapi dev smartroute/main.py
 ```
 
-### Versão 3
-
-Permite definir a ordem de fallback das LLMs.
-
-Atenção ao detalhe em que é possível escolher o fallback ou o seu tipo, **NUNCA** os dois
-
-**POST /generate-response**
-
-```json
-{
-  "text": "bom dia",
-  "fallback": ["chatgpt", "deepseek"]
-}
-```
-
-Saida, caminho feliz
-
-```json
-{
-  "output": "bom dia Daniel",
-  "model-used": "deepseek"
-}
-```
-
-### Versão 4
-
-Permite enviar texto junto com arquivos (PDF ou imagem) para processamento.
-
-**POST /generate-content** (validar se é realmente um arquivo pdf ou imagem.)
-
-```json
-{
-  "text": "Analise esta imagem para mim e gere uma imagem resultante",
-  "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"]
-}
-```
-
-Saida, caminho feliz
-
-```json
-{
-  "output": "bom dia Daniel",
-  "output-image": "image_path",
-  "model-used": "mistral"
-}
-```
-
-### Versão 5
-
-Permite selecionar as LLMs por fallback ao processar texto + arquivos.
-
-**POST /generate-content**
-
-```json
-{
-  "text": "Desenhe uma maça caindo do céu",
-  "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"],
-  "fallback": ["chatgpt", "deepseek"]
-}
-```
-
-Saída, caminho feliz
-
-```json
-{
-  "output": "",
-  "output-image": "file=@caminho/do/arquivo.png",
-  "model-used": "mistral"
-}
-```
-
-### Versão 6
-
-Além de enviar o arquivo, permite selecionar as LLM's por tipo de fallback. Atenção que ao usar `type-rollback`, não será possível usar `fallback`
-
-**POST /generate-content**
-
-```json
-{
-  "text": "Desenhe uma maça caindo do céu",
-  "file_path": ["file=@caminho/do/arquivo.pdf", "file=@caminho/do/arquivo2.png"],
-  "type-rollback": "cost" | "latency" | "availability" | "quality"
-}
-```
-
-Saída, caminho feliz
-
-```json
-{
-  "output": "",
-  "output-image": "file=@caminho/do/arquivo.png",
-  "model-used": "mistral"
-}
-```
-
-### Versão xx - usuário autenticado
-
-- Tokens?
-- usuário e senha?
-
-### Versão xx - Monitoramento
-
-- logger?
-- excel?
-- planilha interativa (powerbi)?
+Isto irá iniciar o servidor FastAPI na porta 8000. Acesse `http://localhost:8000/docs` para visualizar a documentação da API.
