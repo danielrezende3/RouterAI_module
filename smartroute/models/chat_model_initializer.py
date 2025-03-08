@@ -67,6 +67,11 @@ REASONING_MODELS: dict[str, ModelDict] = {
     },
 }
 ALL_MODELS = {**FAST_MODELS, **MID_MODELS, **REASONING_MODELS}
+TIER_MODEL_MAPPING = {
+    "fast": FAST_MODELS,
+    "mid": MID_MODELS,
+    "reasoning": REASONING_MODELS,
+}
 
 
 def start_chat_model(
@@ -85,9 +90,6 @@ def get_effective_timeout(model_configs: dict[str, ModelDict]) -> float:
 
     The effective timeout is determined by taking the maximum timeout
     from all models in the configuration.
-
-    :param model_configs: A dictionary of model configurations (ModelDict).
-    :return: The effective timeout in seconds.
     """
     return max(model_info["timeout"] for model_info in model_configs.values())
 
@@ -96,3 +98,16 @@ def get_chat_instances(
     models: dict[str, ModelDict],
 ) -> list[BaseChatModel]:
     return [start_chat_model(model_info[1]) for model_info in models.items()]
+
+
+def get_model_name(model) -> str:
+    """
+    Extracts a user-friendly name from the model instance.
+
+    The function checks for common attributes that indicate the model's name.
+    If the name contains a forward slash, only the part after the last slash is returned.
+    """
+    name = getattr(model, "model", None) or getattr(
+        model, "model_name", "unknown_model"
+    )
+    return name.split("/")[-1] if "/" in name else name

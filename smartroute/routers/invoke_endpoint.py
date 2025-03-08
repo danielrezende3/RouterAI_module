@@ -7,26 +7,21 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_postgres import PostgresChatMessageHistory
 
-from smartroute.classifier import async_classify_prompt, decide_tier
+from smartroute.classifiers.prompt_classifier import async_classify_prompt, decide_tier
 from smartroute.database import get_session
-from smartroute.models_config import (
+from smartroute.models.chat_model_initializer import (
     ALL_MODELS,
-    FAST_MODELS,
-    MID_MODELS,
-    REASONING_MODELS,
+    TIER_MODEL_MAPPING,
     get_chat_instances,
     get_effective_timeout,
+    get_model_name,
     start_chat_model,
 )
 from smartroute.schemas import InvokeResponse, InvokeRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/invoke", tags=["invoke"])
-TIER_MODEL_MAPPING = {
-    "fast": FAST_MODELS,
-    "mid": MID_MODELS,
-    "reasoning": REASONING_MODELS,
-}
+
 ALL_MODELS_FAILED_REQUEST = "All models failed to process the request."
 
 
@@ -34,6 +29,7 @@ ALL_MODELS_FAILED_REQUEST = "All models failed to process the request."
 async def invoke_ai_response(
     inference_request: InvokeRequest, session=Depends(get_session)
 ) -> InvokeResponse:
+    context_token = str(uuid.uuid4())
     response, model_used = await process_inference_request(
         inference_request.text,
         inference_request.fallback,
@@ -41,19 +37,12 @@ async def invoke_ai_response(
         inference_request.latency_mode,
         session=session,
     )
-    context_token = str(uuid.uuid4())
-    # Save the inference request and response to the database
-    # save_inference_request(inference_request, response, context_token)
-    chat_history = PostgresChatMessageHistory(
-        "chat_history", context_token, async_connection=session
+    await add_chat_history(
+        text=inference_request.text,
+        response=response,
+        context_token=context_token,
+        session=session,
     )
-    msgs = [
-        SystemMessage(content="You're a helpful AI assistant!"),
-        HumanMessage(content=inference_request.text),
-        AIMessage(content=str(response.content)),
-    ]
-    await chat_history.aadd_messages(msgs)
-    logger.info(await chat_history.aget_messages())
     return InvokeResponse(
         output=str(response.content), model_used=model_used, context_token=context_token
     )
@@ -77,6 +66,22 @@ async def invoke_ai_response_with_history(
     )
 
 
+async def add_chat_history(
+    text: str, response: BaseMessage, context_token: str, session
+) -> None:
+    """Helper to add messages to chat history and log the history."""
+    chat_history = PostgresChatMessageHistory(
+        "chat_history", context_token, async_connection=session
+    )
+    messages = [
+        SystemMessage(content="You're a helpful AI assistant!"),
+        HumanMessage(content=text),
+        AIMessage(content=str(response.content)),
+    ]
+    await chat_history.aadd_messages(messages)
+    logger.info(await chat_history.aget_messages())
+
+
 async def process_inference_request(
     text: str,
     fallback: list[str] | None = None,
@@ -93,16 +98,25 @@ async def process_inference_request(
     )
     models, timeout = await get_models(text, fallback, tier)
     base_messages = await prepare_text(text, context_token, session=session)
-    if latency_mode:
-        response, model_used = await get_model_response_concurrent(
-            models, base_messages, timeout
-        )
-    else:
-        response, model_used = await get_model_response_sequential(
-            models, base_messages, timeout
-        )
+    response, model_used = await get_model_response(
+        models, base_messages, timeout, latency_mode
+    )
 
     return response, model_used
+
+
+async def get_model_response(
+    models: list[BaseChatModel],
+    messages: list[BaseMessage],
+    timeout: float,
+    latency_mode: bool,
+) -> tuple[BaseMessage, str]:
+    """
+    A single helper that chooses between concurrent or sequential processing.
+    """
+    if latency_mode:
+        return await get_model_response_concurrent(models, messages, timeout)
+    return await get_model_response_sequential(models, messages, timeout)
 
 
 async def prepare_text(
@@ -187,16 +201,11 @@ def initialize_models_by_tier(tier: str) -> tuple[list[BaseChatModel], float]:
         )
     models = get_chat_instances(model_configs)
     timeout = get_effective_timeout(model_configs)
-    logger.debug(
-        "Initialized tier models for '%s' with effective timeout %s seconds",
-        tier,
-        timeout,
-    )
     return models, timeout
 
 
 async def ainvoke_model(
-    model: BaseChatModel, text: list[BaseMessage], timeout: float
+    model: BaseChatModel, messages: list[BaseMessage], timeout: float
 ) -> tuple[BaseMessage, str]:
     """
     Invoke the specified chat model asynchronously with the given text.
@@ -207,19 +216,19 @@ async def ainvoke_model(
     """
     model_name = get_model_name(model)
     logger.debug("Invoking model: %s", model_name)
-    result = await asyncio.wait_for(model.ainvoke(text), timeout=timeout)
+    result = await asyncio.wait_for(model.ainvoke(messages), timeout=timeout)
     return result, model_name
 
 
 async def get_model_response_concurrent(
-    models: list[BaseChatModel], text: list[BaseMessage], timeout: float
+    models: list[BaseChatModel], messages: list[BaseMessage], timeout: float
 ) -> tuple[BaseMessage, str]:
     """
     Invokes all models concurrently and returns the first valid response.
     Pending tasks are cancelled once a valid response is received.
     """
     tasks = [
-        asyncio.create_task(ainvoke_model(model, text, timeout)) for model in models
+        asyncio.create_task(ainvoke_model(model, messages, timeout)) for model in models
     ]
     try:
         for completed_task in asyncio.as_completed(tasks, timeout=timeout):
@@ -244,7 +253,7 @@ async def get_model_response_concurrent(
 
 
 async def get_model_response_sequential(
-    models: list[BaseChatModel], text: list[BaseMessage], timeout: float
+    models: list[BaseChatModel], messages: list[BaseMessage], timeout: float
 ) -> tuple[BaseMessage, str]:
     """
     Attempts to generate a response from the provided models.
@@ -252,16 +261,10 @@ async def get_model_response_sequential(
     Iterates through the list of models and calls their asynchronous invocation method.
     If a model times out or errors, the next model is tried. If all models fail, an exception
     is raised.
-
-    :param models: List of AI model instances.
-    :param text: The text prompt for the AI model.
-    :param timeout: Maximum allowed time for each model's invocation.
-    :return: An InferencePublic object with the model's output and identifier.
-    :raises HTTPException: If all models fail to produce a valid response.
     """
     for model in models:
         try:
-            result, model_name = await ainvoke_model(model, text, timeout)
+            result, model_name = await ainvoke_model(model, messages, timeout)
             return result, model_name
         except asyncio.TimeoutError:
             logger.error(
@@ -274,24 +277,3 @@ async def get_model_response_sequential(
         status_code=status.HTTP_408_REQUEST_TIMEOUT,
         detail=ALL_MODELS_FAILED_REQUEST,
     )
-
-
-def get_model_name(model) -> str:
-    """
-    Extracts a user-friendly name from the model instance.
-
-    The function checks for common attributes that indicate the model's name.
-    If the name contains a forward slash, only the part after the last slash is returned.
-
-    :param model: An AI model instance.
-    :return: A simplified model name.
-    """
-    text = ""
-    if hasattr(model, "model"):
-        text = model.model
-    elif hasattr(model, "model_name"):
-        text = model.model_name
-    else:
-        text = "unknown_model"
-
-    return text.split("/")[-1] if "/" in text else text

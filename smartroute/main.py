@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from smartroute.models_config import FAST_MODELS, MID_MODELS, REASONING_MODELS
-from smartroute.routers import invoke
+from smartroute.models.chat_model_initializer import FAST_MODELS, MID_MODELS, REASONING_MODELS
+from smartroute.routers import invoke_endpoint
 from smartroute.settings import Settings
 
 settings = Settings()  # type: ignore
@@ -66,7 +66,7 @@ Note: By default the strategy choosen is sequential.
 
 
 app = FastAPI(title="SmartRoute API", version="0.1.0", description=description)
-app.include_router(invoke.router)
+app.include_router(invoke_endpoint.router)
 
 
 @app.get("/")
