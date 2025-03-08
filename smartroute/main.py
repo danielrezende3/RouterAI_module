@@ -13,9 +13,9 @@ SmartRoute API is a service that routes text data to the most appropriate model 
 
 |    type/model | chatgpt                |          Gemini          | Claude                     |
 | ------------: | ---------------------: | :----------------------: | :------------------------- |
-|      **fast** | {FAST_MODELS["chatgpt-fast"]['name']} |  {FAST_MODELS["gemini-fast"]['name']}   | {FAST_MODELS["claude-fast"]['name']}  |
-|       **mid** | {MID_MODELS["chatgpt-mid"]['name']}            |     {MID_MODELS["gemini-mid"]['name']}     | {MID_MODELS["claude-mid"]['name']}   |
-| **reasoning** | {REASONING_MODELS["chatgpt-reasoning"]['name']}     | {REASONING_MODELS["gemini-reasoning"]['name']} | {REASONING_MODELS["claude-reasoning"]['name']} |
+|      **fast** | {FAST_MODELS["chatgpt-fast"]["name"]} |  {FAST_MODELS["gemini-fast"]["name"]}   | {FAST_MODELS["claude-fast"]["name"]}  |
+|       **mid** | {MID_MODELS["chatgpt-mid"]["name"]}            |     {MID_MODELS["gemini-mid"]["name"]}     | {MID_MODELS["claude-mid"]["name"]}   |
+| **reasoning** | {REASONING_MODELS["chatgpt-reasoning"]["name"]}     | {REASONING_MODELS["gemini-reasoning"]["name"]} | {REASONING_MODELS["claude-reasoning"]["name"]} |
 
 ## Model Selection Options:
 
