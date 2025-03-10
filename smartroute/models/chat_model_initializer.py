@@ -101,7 +101,7 @@ def get_chat_instances(
     # * Is this necessary?
     items = list(models.items())
     random.shuffle(items)
-    return [start_chat_model(model_info[1]) for model_info in models.items()]
+    return [start_chat_model(model_info) for _, model_info in items]
 
 
 def get_model_name(model) -> str:
