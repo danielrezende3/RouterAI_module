@@ -26,9 +26,11 @@ poetry install
 
 ```bash
 docker run --name my_postgres -e POSTGRES_PASSWORD=mysecretpassword -d -p 5432:5432 postgres
-docker exec -it my_postgres psql -U postgres -c "CREATE DATABASE chat_history;"
 ```
 
+```bash
+docker exec -it my_postgres psql -U postgres -c "CREATE DATABASE chat_history;"
+```
 
 ### Iniciar o Ambiente Virtual com Poetry
 
