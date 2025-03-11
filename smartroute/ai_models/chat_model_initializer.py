@@ -1,4 +1,4 @@
-from smartroute.schemas import ModelDict
+from smartroute.schemas import AiModelDict
 from smartroute.settings import Settings
 from langchain_core.language_models import BaseChatModel
 from langchain.chat_models import init_chat_model
@@ -7,7 +7,7 @@ import random
 settings = Settings()  # type: ignore
 FAST_TIMEOUT = 60  # 1 minute
 REASONING_TIMEOUT = 300  # 5 minutes
-FAST_MODELS: dict[str, ModelDict] = {
+FAST_MODELS: dict[str, AiModelDict] = {
     "chatgpt-fast": {
         "name": "gpt-4o-mini-2024-07-18",
         "provider": "openai",
@@ -27,7 +27,7 @@ FAST_MODELS: dict[str, ModelDict] = {
         "timeout": FAST_TIMEOUT,
     },
 }
-MID_MODELS: dict[str, ModelDict] = {
+MID_MODELS: dict[str, AiModelDict] = {
     "chatgpt-mid": {
         "name": "gpt-4o-2024-11-20",
         "provider": "openai",
@@ -47,7 +47,7 @@ MID_MODELS: dict[str, ModelDict] = {
         "timeout": FAST_TIMEOUT,
     },
 }
-REASONING_MODELS: dict[str, ModelDict] = {
+REASONING_MODELS: dict[str, AiModelDict] = {
     "chatgpt-reasoning": {
         "name": "o3-mini-2025-01-31",
         "provider": "openai",
@@ -76,7 +76,7 @@ TIER_MODEL_MAPPING = {
 
 
 def start_chat_model(
-    model_info: ModelDict,
+    model_info: AiModelDict,
 ) -> BaseChatModel:
     return init_chat_model(
         model_info["name"],
@@ -85,7 +85,7 @@ def start_chat_model(
     )
 
 
-def get_effective_timeout(model_configs: dict[str, ModelDict]) -> float:
+def get_effective_timeout(model_configs: dict[str, AiModelDict]) -> float:
     """
     Computes the effective timeout for a given set of model configurations.
 
@@ -96,7 +96,7 @@ def get_effective_timeout(model_configs: dict[str, ModelDict]) -> float:
 
 
 def get_chat_instances(
-    models: dict[str, ModelDict],
+    models: dict[str, AiModelDict],
 ) -> list[BaseChatModel]:
     # * Is this necessary?
     items = list(models.items())

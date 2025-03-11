@@ -1,7 +1,12 @@
 from fastapi import FastAPI
 
-from smartroute.models.chat_model_initializer import FAST_MODELS, MID_MODELS, REASONING_MODELS
-from smartroute.routers import invoke_endpoint
+from smartroute.ai_models.chat_model_initializer import (
+    FAST_MODELS,
+    MID_MODELS,
+    REASONING_MODELS,
+)
+from smartroute.routers import auth, invoke
+from smartroute.schemas import MessageResponse
 from smartroute.settings import Settings
 
 settings = Settings()  # type: ignore
@@ -66,11 +71,12 @@ Note: By default the strategy choosen is sequential.
 
 
 app = FastAPI(title="SmartRoute API", version="0.1.0", description=description)
-app.include_router(invoke_endpoint.router)
+app.include_router(invoke.router)
+app.include_router(auth.router)
 
 
 @app.get("/")
-async def get_welcome_message():
-    return {
-        "message": "Welcome to SmartRoute API! To access the docs, go to /docs or /redoc",
-    }
+async def get_welcome_message() -> MessageResponse:
+    return MessageResponse(
+        message="Welcome to SmartRoute API! To access the docs, go to /docs or /redoc"
+    )

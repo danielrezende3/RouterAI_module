@@ -19,6 +19,8 @@ torch = "^2.6.0"
 transformers = "^4.49.0"
 psycopg = {extras = ["binary"], version = "^3.2.5"}
 langchain-postgres = "^0.0.13"
+pyjwt = "^2.10.1"
+alembic = "^1.15.1"
 
 
 [tool.poetry.group.dev.dependencies]

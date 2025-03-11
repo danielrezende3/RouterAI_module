@@ -19,8 +19,17 @@ class InvokeResponse(BaseModel):
     context_token: str
 
 
-class ModelDict(TypedDict):
+class AiModelDict(TypedDict):
     name: str
     provider: str
     api_key: str
     timeout: int
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class MessageResponse(BaseModel):
+    message: str
