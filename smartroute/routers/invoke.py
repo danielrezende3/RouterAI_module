@@ -1,15 +1,15 @@
 import asyncio
 import logging
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_postgres import PostgresChatMessageHistory
+from psycopg import AsyncConnection
 
-from smartroute.classifiers.prompt_classifier import async_classify_prompt, decide_tier
-from smartroute.database import get_session
-from smartroute.models.chat_model_initializer import (
+from smartroute.ai_models.chat_model_initializer import (
     ALL_MODELS,
     TIER_MODEL_MAPPING,
     get_chat_instances,
@@ -17,25 +17,31 @@ from smartroute.models.chat_model_initializer import (
     get_model_name,
     start_chat_model,
 )
-from smartroute.schemas import InvokeResponse, InvokeRequest
+from smartroute.classifiers.prompt_classifier import async_classify_prompt, decide_tier
+from smartroute.database import get_session
+from smartroute.schemas import InvokeRequest, InvokeResponse
+from smartroute.security import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/invoke", tags=["invoke"])
+Session = Annotated[AsyncConnection, Depends(get_session)]
 
 ALL_MODELS_FAILED_REQUEST = "All models failed to process the request."
 
 
 @router.post("/", response_model=InvokeResponse)
 async def invoke_ai_response(
-    inference_request: InvokeRequest, session=Depends(get_session)
+    inference_request: InvokeRequest,
+    session: Session,
+    current_user: str = Depends(get_current_user),
 ) -> InvokeResponse:
     context_token = str(uuid.uuid4())
     response, model_used = await process_inference_request(
         inference_request.text,
+        session,
         inference_request.fallback,
         inference_request.tier,
         inference_request.latency_mode,
-        session=session,
     )
     await add_chat_history(
         text=inference_request.text,
@@ -50,15 +56,18 @@ async def invoke_ai_response(
 
 @router.post("/{context_token}", response_model=InvokeResponse)
 async def invoke_ai_response_with_history(
-    context_token: str, inference_request: InvokeRequest, session=Depends(get_session)
+    context_token: str,
+    inference_request: InvokeRequest,
+    session: Session,
+    current_user: str = Depends(get_current_user),
 ) -> InvokeResponse:
     response, model_used = await process_inference_request(
         inference_request.text,
+        session,
         inference_request.fallback,
         inference_request.tier,
         inference_request.latency_mode,
         context_token,
-        session=session,
     )
     await add_chat_history(
         text=inference_request.text,
@@ -72,7 +81,7 @@ async def invoke_ai_response_with_history(
 
 
 async def add_chat_history(
-    text: str, response: BaseMessage, context_token: str, session
+    text: str, response: BaseMessage, context_token: str, session: Session
 ) -> None:
     """Helper to add messages to chat history and log the history."""
     chat_history = PostgresChatMessageHistory(
@@ -88,11 +97,11 @@ async def add_chat_history(
 
 async def process_inference_request(
     text: str,
+    session: Session,
     fallback: list[str] | None = None,
     tier: str | None = None,
     latency_mode: bool = False,
     context_token: str = "",
-    session=None,
 ) -> tuple[BaseMessage, str]:
     logger.info(
         "Received invocation request with tier: %s, fallback: %s, and latency mode: %s",
@@ -101,7 +110,7 @@ async def process_inference_request(
         latency_mode,
     )
     models, timeout = await get_models(text, fallback, tier)
-    base_messages = await prepare_text(text, context_token, session=session)
+    base_messages = await prepare_text(text, session, context_token)
     response, model_used = await get_model_response(
         models, base_messages, timeout, latency_mode
     )
@@ -124,7 +133,7 @@ async def get_model_response(
 
 
 async def prepare_text(
-    text: str, context_token: str = "", session=Depends(get_session)
+    text: str, session: Session, context_token: str = ""
 ) -> list[BaseMessage]:
     if not context_token:
         return [HumanMessage(content=text)]
