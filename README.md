@@ -29,14 +29,6 @@ Infelizmente é preciso criar o banco de dados manualmente, pelo menos por enqua
 docker run --name smartroute_db -e POSTGRES_PASSWORD=mysecretpassword -e POSTGRES_DB=chat_history -d -p 5432:5432 postgres
 ```
 
-### Iniciar o Ambiente Virtual com Poetry
-
-Entre no ambiente virtual do Poetry:
-
-```bash
-poetry shell
-```
-
 ### Configurar o Arquivo .env
 
 Configure o arquivo `.env` com as variáveis de ambiente necessárias. Envie as chaves apropriadas conforme orientações do time.
@@ -52,7 +44,7 @@ JWT_SECRET_KEY=ADD_PASSPHRASE_KEY_HERE
 ### Rodar o projeto
 
 ```bash
-fastapi dev smartroute/main.py
+poetry run fastapi dev smartroute/main.py
 ```
 
 Isto irá iniciar o servidor FastAPI na porta 8000. Acesse `http://localhost:8000/docs` para visualizar a documentação da API.

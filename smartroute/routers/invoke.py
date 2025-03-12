@@ -32,21 +32,21 @@ ALL_MODELS_FAILED_REQUEST = "All models failed to process the request."
 # API endpoints -----------------------------------------------------------------------
 @router.post("/", response_model=InvokeResponse)
 async def invoke_ai_response(
-    inference_request: InvokeRequest,
+    invoke_request: InvokeRequest,
     session: Session,
     current_user: str = Depends(get_current_user),
 ) -> InvokeResponse:
     context_token = str(uuid.uuid4())
     await create_chat_session(context_token, current_user, session)
-    response, model_used = await process_inference_request(
-        inference_request.text,
+    response, model_used = await process_invoke_request(
+        invoke_request.text,
         session,
-        inference_request.fallback,
-        inference_request.tier,
-        inference_request.latency_mode,
+        invoke_request.fallback,
+        invoke_request.tier,
+        invoke_request.latency_mode,
     )
     await add_chat_history(
-        text=inference_request.text,
+        text=invoke_request.text,
         response=response,
         context_token=context_token,
         session=session,
@@ -59,7 +59,7 @@ async def invoke_ai_response(
 @router.post("/{context_token}", response_model=InvokeResponse)
 async def invoke_ai_response_with_history(
     context_token: str,
-    inference_request: InvokeRequest,
+    invoke_request: InvokeRequest,
     session: Session,
     current_user: str = Depends(get_current_user),
 ) -> InvokeResponse:
@@ -70,16 +70,16 @@ async def invoke_ai_response_with_history(
             detail="Access to this context is forbidden",
         )
 
-    response, model_used = await process_inference_request(
-        inference_request.text,
+    response, model_used = await process_invoke_request(
+        invoke_request.text,
         session,
-        inference_request.fallback,
-        inference_request.tier,
-        inference_request.latency_mode,
+        invoke_request.fallback,
+        invoke_request.tier,
+        invoke_request.latency_mode,
         context_token,
     )
     await add_chat_history(
-        text=inference_request.text,
+        text=invoke_request.text,
         response=response,
         context_token=context_token,
         session=session,
@@ -89,7 +89,7 @@ async def invoke_ai_response_with_history(
     )
 
 
-async def process_inference_request(
+async def process_invoke_request(
     text: str,
     session: Session,
     fallback: list[str] | None = None,
@@ -104,7 +104,7 @@ async def process_inference_request(
         latency_mode,
     )
     models, timeout = await get_models(text, fallback, tier)
-    base_messages = await prepare_text(text, session, context_token)
+    base_messages = await build_chat_message_list(text, session, context_token)
     response, model_used = await get_model_response(
         models, base_messages, timeout, latency_mode
     )
@@ -288,7 +288,7 @@ async def get_model_response_sequential(
 
 
 # Database transactions ---------------------------------------------------------------
-async def prepare_text(
+async def build_chat_message_list(
     text: str, session: Session, context_token: str = ""
 ) -> list[BaseMessage]:
     if not context_token:
