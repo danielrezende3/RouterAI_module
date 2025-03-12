@@ -2,8 +2,7 @@ from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from psycopg import AsyncConnection, Connection
-
+from psycopg import AsyncConnection
 from smartroute.database import get_session
 from smartroute.schemas import MessageResponse, TokenResponse
 from smartroute.security import create_access_token, verify_token
@@ -47,7 +46,7 @@ async def login(user: str, session: Session) -> TokenResponse:
 @router.get("/protected")
 async def protected_endpoint(
     session: Session,
-    token: str = Header(...),
+    jwt_token: str = Header(...),
 ) -> MessageResponse:
     """Verifies the provided authorization token and authorizes the request.
 
@@ -55,7 +54,7 @@ async def protected_endpoint(
     its payload. It ensures that the token is valid and active by querying the token store.
     If the token is invalid or revoked, it raises an HTTPException with a 401 Unauthorized status."""
 
-    payload = verify_token(token)
+    payload = verify_token(jwt_token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_TOKEN
@@ -79,10 +78,10 @@ async def protected_endpoint(
 
 
 @router.post("/revoke")
-async def revoke_token(token: str, session: Session) -> MessageResponse:
+async def revoke_token(jwt_token: str, session: Session) -> MessageResponse:
     """Revokes an authentication token by verifying its validity and marking it as inactive in the database."""
 
-    payload = verify_token(token)
+    payload = verify_token(jwt_token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_TOKEN

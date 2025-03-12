@@ -36,6 +36,7 @@ async def invoke_ai_response(
     current_user: str = Depends(get_current_user),
 ) -> InvokeResponse:
     context_token = str(uuid.uuid4())
+    await create_chat_session(context_token, current_user, session)
     response, model_used = await process_inference_request(
         inference_request.text,
         session,
@@ -61,6 +62,13 @@ async def invoke_ai_response_with_history(
     session: Session,
     current_user: str = Depends(get_current_user),
 ) -> InvokeResponse:
+    owner = await get_context_owner(context_token, session)
+    if owner and owner != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access to this context is forbidden",
+        )
+
     response, model_used = await process_inference_request(
         inference_request.text,
         session,
@@ -78,6 +86,21 @@ async def invoke_ai_response_with_history(
     return InvokeResponse(
         output=str(response.content), model_used=model_used, context_token=context_token
     )
+
+
+async def get_context_owner(context_token: str, session: Session) -> str | None:
+    query = "SELECT owner FROM chat_sessions WHERE context_token = %s"
+    async with session.cursor() as cur:
+        await cur.execute(query, (context_token,))
+        row = await cur.fetchone()
+    return row[0] if row else None
+
+
+async def create_chat_session(context_token: str, owner: str, session: Session) -> None:
+    query = "INSERT INTO chat_sessions (context_token, owner) VALUES (%s, %s)"
+    async with session.cursor() as cur:
+        await cur.execute(query, (context_token, owner))
+    await session.commit()
 
 
 async def add_chat_history(

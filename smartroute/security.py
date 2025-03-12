@@ -53,9 +53,13 @@ def verify_token(token: str):
 
 async def get_current_user(
     session: Session,
-    token: str = Header(...),
+    jwt_token: str = Header(...),
 ) -> str:
-    payload = verify_token(token)
+    """Asynchronously retrieves the current user based on the provided authentication token.
+    This function validates the given token by verifying its payload and ensuring that it exists
+    and remains active in the database. If the token is either invalid or has been revoked,
+    an HTTPException with a 401 status code is raised."""
+    payload = verify_token(jwt_token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
