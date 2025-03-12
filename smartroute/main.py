@@ -43,7 +43,7 @@ It would be called like this:
 ```json
 {{
   "text": "string",
-  "tier": "fast | mid | reasoning",
+  "tier": "reasoning",
 }}
 ```
 
@@ -63,8 +63,15 @@ It is choosen using `model-type` style, for example:
 ## Response Strategy Configuration:  
 The API offers two distinct inference strategies, controlled by a dedicated boolean flag (`latency_mode`):
 
-- **Concurrent (Latency Mode)**: When `latency_mode` is set to `True`, all selected models are invoked concurrently. The API returns the first valid response and cancels any pending tasks—minimizing overall latency.
-- **Sequential Processing**: If `latency_mode` is `False`, models are invoked one after another. The API attempts each model sequentially until one produces a valid response.
+- **Concurrent (Latency Mode)**: When `latency_mode` is set to `true`, all selected models are invoked concurrently. The API returns the first valid response and cancels any pending tasks—minimizing overall latency.
+- **Sequential Processing**: If `latency_mode` is `false`, models are invoked one after another. The API attempts each model sequentially until one produces a valid response.
+
+It would be called like this:
+```json
+{{
+  "text": "string",
+  "latency_mode": false
+}}
 
 Note: By default the strategy choosen is sequential.
 """
