@@ -293,9 +293,7 @@ async def build_chat_message_list(
 ) -> list[BaseMessage]:
     if not context_token:
         return [HumanMessage(content=text)]
-    chat_history = PostgresChatMessageHistory(
-        "chat_history", context_token, async_connection=session
-    )
+    chat_history = get_chat_history(context_token, session)
     history = await chat_history.aget_messages()
     return history + [HumanMessage(content=text)]
 
@@ -319,11 +317,23 @@ async def add_chat_history(
     text: str, response: BaseMessage, context_token: str, session: Session
 ) -> None:
     """Helper to add messages to chat history and log the history."""
-    chat_history = PostgresChatMessageHistory(
-        "chat_history", context_token, async_connection=session
-    )
+    chat_history = get_chat_history(context_token, session)
     messages = [
         HumanMessage(content=text),
         AIMessage(content=str(response.content)),
     ]
     await chat_history.aadd_messages(messages)
+
+
+def get_chat_history(
+    context_token: str, session: Session
+) -> PostgresChatMessageHistory:
+    try:
+        return PostgresChatMessageHistory(
+            "chat_history", context_token, async_connection=session
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat history not found for the provided context token.",
+        )

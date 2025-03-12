@@ -37,7 +37,7 @@ def create_tokens_table(session: Connection) -> None:
     with session.cursor() as cur:
         cur.execute(create_table_query)
     session.commit()
-    logging.info("Created tokens table")
+    logging.info("Created if not exits tokens table")
 
 
 def create_chat_sessions_table(connection):
@@ -50,4 +50,4 @@ def create_chat_sessions_table(connection):
     with connection.cursor() as cur:
         cur.execute(create_table_query)
     connection.commit()
-    logging.info("Created chat_session table")
+    logging.info("Created if not exits chat_session table")
