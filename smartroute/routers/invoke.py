@@ -29,6 +29,7 @@ Session = Annotated[AsyncConnection, Depends(get_session)]
 ALL_MODELS_FAILED_REQUEST = "All models failed to process the request."
 
 
+# API endpoints -----------------------------------------------------------------------
 @router.post("/", response_model=InvokeResponse)
 async def invoke_ai_response(
     inference_request: InvokeRequest,
@@ -88,36 +89,6 @@ async def invoke_ai_response_with_history(
     )
 
 
-async def get_context_owner(context_token: str, session: Session) -> str | None:
-    query = "SELECT owner FROM chat_sessions WHERE context_token = %s"
-    async with session.cursor() as cur:
-        await cur.execute(query, (context_token,))
-        row = await cur.fetchone()
-    return row[0] if row else None
-
-
-async def create_chat_session(context_token: str, owner: str, session: Session) -> None:
-    query = "INSERT INTO chat_sessions (context_token, owner) VALUES (%s, %s)"
-    async with session.cursor() as cur:
-        await cur.execute(query, (context_token, owner))
-    await session.commit()
-
-
-async def add_chat_history(
-    text: str, response: BaseMessage, context_token: str, session: Session
-) -> None:
-    """Helper to add messages to chat history and log the history."""
-    chat_history = PostgresChatMessageHistory(
-        "chat_history", context_token, async_connection=session
-    )
-    messages = [
-        HumanMessage(content=text),
-        AIMessage(content=str(response.content)),
-    ]
-    await chat_history.aadd_messages(messages)
-    logger.info(await chat_history.aget_messages())
-
-
 async def process_inference_request(
     text: str,
     session: Session,
@@ -141,6 +112,7 @@ async def process_inference_request(
     return response, model_used
 
 
+# Model processing --------------------------------------------------------------------
 async def get_model_response(
     models: list[BaseChatModel],
     messages: list[BaseMessage],
@@ -153,18 +125,6 @@ async def get_model_response(
     if latency_mode:
         return await get_model_response_concurrent(models, messages, timeout)
     return await get_model_response_sequential(models, messages, timeout)
-
-
-async def prepare_text(
-    text: str, session: Session, context_token: str = ""
-) -> list[BaseMessage]:
-    if not context_token:
-        return [HumanMessage(content=text)]
-    chat_history = PostgresChatMessageHistory(
-        "chat_history", context_token, async_connection=session
-    )
-    history = await chat_history.aget_messages()
-    return history + [HumanMessage(content=text)]
 
 
 async def get_models(
@@ -274,13 +234,25 @@ async def get_model_response_concurrent(
                 for t in tasks:
                     if not t.done():
                         t.cancel()
-                return (result, model_name)
+                        try:
+                            await t
+                        except asyncio.CancelledError:
+                            logger.debug("Cancelled pending task successfully.")
+                return result, model_name
             except Exception as e:
                 logger.error("A model invocation failed: %s", e)
                 continue
     except asyncio.TimeoutError:
         logger.error("No model responded within the timeout period.")
 
+    # Ensure that all tasks are cancelled after timeout or failure
+    for t in tasks:
+        if not t.done():
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                logger.debug("Cancelled pending task after timeout.")
     logger.error(ALL_MODELS_FAILED_REQUEST)
     raise HTTPException(
         status_code=status.HTTP_408_REQUEST_TIMEOUT,
@@ -313,3 +285,45 @@ async def get_model_response_sequential(
         status_code=status.HTTP_408_REQUEST_TIMEOUT,
         detail=ALL_MODELS_FAILED_REQUEST,
     )
+
+
+# Database transactions ---------------------------------------------------------------
+async def prepare_text(
+    text: str, session: Session, context_token: str = ""
+) -> list[BaseMessage]:
+    if not context_token:
+        return [HumanMessage(content=text)]
+    chat_history = PostgresChatMessageHistory(
+        "chat_history", context_token, async_connection=session
+    )
+    history = await chat_history.aget_messages()
+    return history + [HumanMessage(content=text)]
+
+
+async def get_context_owner(context_token: str, session: Session) -> str | None:
+    query = "SELECT owner FROM chat_sessions WHERE context_token = %s"
+    async with session.cursor() as cur:
+        await cur.execute(query, (context_token,))
+        row = await cur.fetchone()
+    return row[0] if row else None
+
+
+async def create_chat_session(context_token: str, owner: str, session: Session) -> None:
+    query = "INSERT INTO chat_sessions (context_token, owner) VALUES (%s, %s)"
+    async with session.cursor() as cur:
+        await cur.execute(query, (context_token, owner))
+    await session.commit()
+
+
+async def add_chat_history(
+    text: str, response: BaseMessage, context_token: str, session: Session
+) -> None:
+    """Helper to add messages to chat history and log the history."""
+    chat_history = PostgresChatMessageHistory(
+        "chat_history", context_token, async_connection=session
+    )
+    messages = [
+        HumanMessage(content=text),
+        AIMessage(content=str(response.content)),
+    ]
+    await chat_history.aadd_messages(messages)
